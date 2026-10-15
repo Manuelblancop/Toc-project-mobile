@@ -18,6 +18,7 @@ import {
   saludoDelDia,
   type PuntoEvolucionEmocional,
 } from '@/lib/emociones';
+import type { ActividadErp } from '@/lib/erp';
 import {
   cargarInicio,
   descuentoAplicadoTurno,
@@ -37,6 +38,7 @@ export default function HomePacienteScreen() {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [serie, setSerie] = useState<PuntoEvolucionEmocional[]>([]);
+  const [actividadErp, setActividadErp] = useState<ActividadErp[]>([]);
   const [triage, setTriage] = useState('');
   const [textoTriage, setTextoTriage] = useState('');
   const [modalAbierto, setModalAbierto] = useState(false);
@@ -58,6 +60,7 @@ export default function HomePacienteScreen() {
       setRegistrado(Boolean(inicio.emojiHoy));
       setEmoji(inicio.emojiHoy);
       setSerie(inicio.puntos);
+      setActividadErp(inicio.actividadErp);
       setTriage(inicio.triageActual);
       setCargando(false);
     })();
@@ -198,6 +201,25 @@ export default function HomePacienteScreen() {
           <Pressable accessibilityRole="button" onPress={abrirTriage} style={styles.botonMotivo}>
             <Text style={styles.botonMotivoText}>📝 Actualizar Triage / Motivo de consulta</Text>
           </Pressable>
+        </View>
+
+        <View>
+          <Text style={styles.actividadTitulo}>Actividad reciente</Text>
+          {actividadErp.length === 0 ? (
+            <Text style={styles.actividadVacia}>
+              Todavía no hay actividad. Empezá un ejercicio ERP o agendá un turno.
+            </Text>
+          ) : (
+            <View style={styles.actividadLista}>
+              {actividadErp.map((item) => (
+                <View key={item.id} style={styles.actividadItem}>
+                  <Text style={styles.actividadNombre}>{item.titulo}</Text>
+                  <Text style={styles.actividadDetalle}>{item.detalle}</Text>
+                  {item.cuando ? <Text style={styles.actividadCuando}>{item.cuando}</Text> : null}
+                </View>
+              ))}
+            </View>
+          )}
         </View>
       </ScrollView>
 
@@ -404,6 +426,48 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     fontSize: 14,
     fontWeight: '600',
+  },
+  actividadTitulo: {
+    marginBottom: 16,
+    color: '#0f172a',
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: -0.2,
+  },
+  actividadVacia: {
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 24,
+    color: '#64748b',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  actividadLista: {
+    gap: 12,
+  },
+  actividadItem: {
+    borderWidth: 1,
+    borderColor: '#f5f5f5',
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 16,
+  },
+  actividadNombre: {
+    color: '#171717',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  actividadDetalle: {
+    marginTop: 4,
+    color: '#737373',
+    fontSize: 14,
+  },
+  actividadCuando: {
+    marginTop: 8,
+    color: '#737373',
+    fontSize: 14,
   },
   error: {
     marginTop: 16,
