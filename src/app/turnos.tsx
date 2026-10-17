@@ -1,4 +1,4 @@
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useCallback, useState } from 'react';
 import { Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -6,11 +6,13 @@ import { Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'r
 import { EmeraldSpinner } from '@/components/emerald-spinner';
 import {
   cargarAgenda,
+  cargarMisTurnos,
   DIA_PRUEBA_LABEL,
   pedirLinkDePago,
   totalConPuntos,
   totalSinPuntos,
   type DoctorAgenda,
+  type TurnoPropio,
 } from '@/lib/agenda';
 import { descuentoAplicadoTurno } from '@/lib/paciente';
 
@@ -54,6 +56,7 @@ export default function TurnosScreen() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [doctores, setDoctores] = useState<DoctorAgenda[]>([]);
+  const [misTurnos, setMisTurnos] = useState<TurnoPropio[]>([]);
   const [puntos, setPuntos] = useState(0);
   const [slot, setSlot] = useState<{ doctor: DoctorAgenda; horario: string } | null>(null);
   const [usarPuntos, setUsarPuntos] = useState(false);
@@ -70,6 +73,8 @@ export default function TurnosScreen() {
     setError(null);
     setDoctores(agenda.doctores);
     setPuntos(agenda.puntos);
+    const propios = await cargarMisTurnos();
+    if (!('error' in propios)) setMisTurnos(propios);
     setCargando(false);
   }, []);
 
@@ -87,6 +92,9 @@ export default function TurnosScreen() {
         setError(null);
         setDoctores(agenda.doctores);
         setPuntos(agenda.puntos);
+        const propios = await cargarMisTurnos();
+        if (!activo) return;
+        if (!('error' in propios)) setMisTurnos(propios);
         setCargando(false);
       })();
       return () => {
@@ -131,6 +139,26 @@ export default function TurnosScreen() {
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
         <Text style={styles.titulo}>Mis turnos</Text>
         <Text style={styles.subtitulo}>Agendá con tu terapeuta</Text>
+
+        {misTurnos.map((turno) => (
+          <View key={turno.id} style={styles.propio}>
+            <Text style={styles.propioKicker}>
+              {turno.estado === 'CONFIRMADO' ? 'Próxima consulta' : 'Sesión finalizada'}
+            </Text>
+            <Text style={styles.propioNombre}>{turno.profesional}</Text>
+            <Text style={styles.propioCuando}>{turno.cuando} · Videoconsulta</Text>
+            {turno.estado === 'CONFIRMADO' ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => router.push({ pathname: '/sala/[turnoId]', params: { turnoId: turno.id } })}
+                style={styles.videollamada}
+              >
+                <Text style={styles.videollamadaTexto}>Ingresar a videollamada</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ))}
+
         <Text style={styles.kicker}>Sacar nuevo turno</Text>
 
         {cargando ? (
@@ -151,9 +179,12 @@ export default function TurnosScreen() {
                   <Text style={styles.avatarTexto}>{iniciales(doctor.nombre)}</Text>
                 </View>
                 <View style={styles.perfilTexto}>
-                  <Text style={styles.nombre}>
-                    {doctor.nombre} <Text style={styles.verificado}>✓</Text>
-                  </Text>
+                  <View style={styles.nombreFila}>
+                    <Text style={styles.nombre}>{doctor.nombre}</Text>
+                    <View style={styles.verificado}>
+                      <Text style={styles.verificadoTexto}>Verificado</Text>
+                    </View>
+                  </View>
                   <Text style={styles.especialidad}>{doctor.especialidad}</Text>
                   <Estrellas rating={doctor.rating} />
                 </View>
@@ -280,6 +311,12 @@ const styles = StyleSheet.create({
   content: { backgroundColor: '#f8fafc', padding: 24, paddingBottom: 120, gap: 8 },
   titulo: { color: '#0f172a', fontSize: 24, fontWeight: '600', letterSpacing: -0.4 },
   subtitulo: { marginBottom: 8, color: '#64748b', fontSize: 14 },
+  propio: { marginBottom: 12, backgroundColor: '#4a7ea0', borderRadius: 24, padding: 20 },
+  propioKicker: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase' },
+  propioNombre: { marginTop: 8, color: '#ffffff', fontSize: 16, fontWeight: '600' },
+  propioCuando: { marginTop: 4, color: 'rgba(255,255,255,0.85)', fontSize: 14 },
+  videollamada: { marginTop: 14, alignSelf: 'flex-start', backgroundColor: '#ffffff', borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10 },
+  videollamadaTexto: { color: '#12382E', fontSize: 14, fontWeight: '700' },
   kicker: {
     marginTop: 8,
     marginBottom: 12,
@@ -311,8 +348,10 @@ const styles = StyleSheet.create({
   },
   avatarTexto: { color: '#ffffff', fontSize: 22, fontWeight: '700' },
   perfilTexto: { flex: 1, gap: 4 },
+  nombreFila: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   nombre: { color: '#171717', fontSize: 16, fontWeight: '500' },
-  verificado: { color: '#5a8a6e' },
+  verificado: { backgroundColor: '#ecfdf5', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
+  verificadoTexto: { color: '#064e3b', fontSize: 12, fontWeight: '600' },
   especialidad: { color: '#3a3d4a', fontSize: 14 },
   nuevo: { color: '#7a7f94', fontSize: 14 },
   estrellas: { color: '#3d6b52', fontSize: 14 },

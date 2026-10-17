@@ -139,3 +139,217 @@ export async function guardarTriageActual(texto: string) {
   if (error) return { success: false as const, detalle: 'No se pudo guardar el triage.' };
   return { success: true as const, triageActual: limpio };
 }
+
+const ZONA = 'America/Argentina/Buenos_Aires';
+const MESES = [
+  'enero',
+  'febrero',
+  'marzo',
+  'abril',
+  'mayo',
+  'junio',
+  'julio',
+  'agosto',
+  'septiembre',
+  'octubre',
+  'noviembre',
+  'diciembre',
+];
+
+export type CuentaPaciente = {
+  nombre: string;
+  email: string;
+  points: number;
+  edad: number | null;
+  mesAlta: string;
+  anioAlta: string;
+};
+
+export type CitaHistorial = {
+  id: string;
+  profesional: string;
+  cuando: string;
+  estado: string;
+};
+
+export type SesionHistorial = {
+  id: string;
+  nombre: string;
+  cuando: string;
+  ansiedad: number;
+};
+
+function fechaArgentina(iso: string) {
+  const fecha = new Date(iso);
+  if (Number.isNaN(fecha.getTime())) return '';
+  return fecha.toLocaleDateString('es-AR', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: ZONA,
+  });
+}
+
+export async function cargarCuenta(): Promise<CuentaPaciente | { error: string }> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: 'No autorizado' };
+
+  const [usuario, perfil] = await Promise.all([
+    supabase.from('usuarios').select('nombre, email, created_at').eq('id', user.id).maybeSingle(),
+    supabase.from('perfil_paciente').select('points, edad').eq('user_id', user.id).maybeSingle(),
+  ]);
+
+  if (usuario.error || perfil.error || !usuario.data) return { error: 'No pudimos cargar el perfil.' };
+
+  const alta = new Date(String(usuario.data.created_at ?? ''));
+  const partes = Number.isNaN(alta.getTime())
+    ? null
+    : new Intl.DateTimeFormat('es-AR', { month: 'numeric', year: 'numeric', timeZone: ZONA }).formatToParts(alta);
+  const mes = Number(partes?.find((parte) => parte.type === 'month')?.value ?? '1');
+
+  return {
+    nombre: typeof usuario.data.nombre === 'string' ? usuario.data.nombre : 'Paciente',
+    email: typeof usuario.data.email === 'string' ? usuario.data.email : '',
+    points: typeof perfil.data?.points === 'number' ? perfil.data.points : 0,
+    edad: typeof perfil.data?.edad === 'number' ? perfil.data.edad : null,
+    mesAlta: MESES[mes - 1] ?? 'enero',
+    anioAlta: partes?.find((parte) => parte.type === 'year')?.value ?? '',
+  };
+}
+
+export async function guardarEdad(valor: string) {
+  const crudo = valor.trim();
+  const edad = Number(crudo);
+  if (!crudo || !Number.isInteger(edad) || edad < 1 || edad > 120) {
+    return { error: 'Ingresá una edad entera entre 1 y 120.' };
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: 'No autorizado' };
+
+  const { data, error } = await supabase
+    .from('perfil_paciente')
+    .update({ edad })
+    .eq('user_id', user.id)
+    .select('user_id');
+
+  if (error || !data?.length) return { error: 'No pudimos guardar la edad.' };
+  return { ok: true as const, edad };
+}
+
+export async function cargarPuntos(): Promise<{ points: number } | { error: string }> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: 'No autorizado' };
+
+  const { data, error } = await supabase.from('perfil_paciente').select('points').eq('user_id', user.id).maybeSingle();
+  if (error) return { error: 'No pudimos cargar los puntos.' };
+  return { points: typeof data?.points === 'number' ? data.points : 0 };
+}
+
+export async function cargarHistorial(): Promise<
+  { citas: CitaHistorial[]; tieneFuturos: boolean; sesiones: SesionHistorial[] } | { error: string }
+> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: 'No autorizado' };
+
+  const ahora = new Date().toISOString();
+  const [turnos, futuros, sesiones] = await Promise.all([
+    supabase
+      .from('turnos')
+      .select('id, fecha_hora, estado, doctor_id')
+      .eq('paciente_id', user.id)
+      .eq('oculto_para_paciente', false)
+      .in('estado', ['CANCELADO', 'COMPLETADO', 'CONFIRMADO'])
+      .order('fecha_hora', { ascending: false }),
+    supabase
+      .from('turnos')
+      .select('id')
+      .eq('paciente_id', user.id)
+      .eq('oculto_para_paciente', false)
+      .in('estado', ['PENDIENTE', 'CONFIRMADO'])
+      .gte('fecha_hora', ahora),
+    supabase
+      .from('historial_sesiones')
+      .select('id, completado_at, ansiedad_nivel, ejercicio_id')
+      .eq('paciente_id', user.id)
+      .order('completado_at', { ascending: false }),
+  ]);
+
+  if (turnos.error || futuros.error) return { error: 'No pudimos cargar el historial.' };
+
+  const pasadas = (turnos.data ?? []).filter((turno) => {
+    if (turno.estado === 'CANCELADO' || turno.estado === 'COMPLETADO') return true;
+    return new Date(String(turno.fecha_hora)).getTime() < Date.now();
+  }).slice(0, 3);
+
+  const doctorIds = [...new Set(pasadas.map((turno) => String(turno.doctor_id)))];
+  const nombres = doctorIds.length
+    ? await supabase.from('doctores_agenda').select('user_id, nombre').in('user_id', doctorIds)
+    : { data: [], error: null };
+  const nombreDe = new Map((nombres.data ?? []).map((fila) => [String(fila.user_id), String(fila.nombre ?? '')]));
+
+  const ejercicioIds = [...new Set((sesiones.data ?? []).map((fila) => String(fila.ejercicio_id)))];
+  const ejercicios = !sesiones.error && ejercicioIds.length
+    ? await supabase.from('ejercicios_erp').select('id, nombre').in('id', ejercicioIds)
+    : { data: [] as { id: string; nombre: string }[] };
+  const ejercicioDe = new Map((ejercicios.data ?? []).map((fila) => [String(fila.id), String(fila.nombre ?? '')]));
+
+  return {
+    tieneFuturos: (futuros.data ?? []).length > 0,
+    citas: pasadas.map((turno) => ({
+      id: String(turno.id),
+      profesional: nombreDe.get(String(turno.doctor_id)) || 'Profesional',
+      cuando: fechaArgentina(String(turno.fecha_hora)),
+      estado: String(turno.estado),
+    })),
+    sesiones: sesiones.error
+      ? []
+      : (sesiones.data ?? []).map((fila) => ({
+          id: String(fila.id),
+          nombre: ejercicioDe.get(String(fila.ejercicio_id)) || 'Ejercicio ERP',
+          cuando: fechaArgentina(String(fila.completado_at)),
+          ansiedad: Number(fila.ansiedad_nivel) || 0,
+        })),
+  };
+}
+
+export async function ocultarCita(turnoId: string) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: 'No autorizado' };
+
+  const { data: turno, error: lectura } = await supabase
+    .from('turnos')
+    .select('id, estado, fecha_hora')
+    .eq('id', turnoId)
+    .eq('paciente_id', user.id)
+    .maybeSingle();
+
+  if (lectura || !turno) return { error: 'Solo podés ocultar una cita pasada o cancelada' };
+
+  const pasada =
+    turno.estado === 'COMPLETADO' ||
+    turno.estado === 'CANCELADO' ||
+    (turno.estado === 'CONFIRMADO' && new Date(String(turno.fecha_hora)).getTime() < Date.now());
+  if (!pasada) return { error: 'Solo podés ocultar una cita pasada o cancelada' };
+
+  const { data, error } = await supabase
+    .from('turnos')
+    .update({ oculto_para_paciente: true })
+    .eq('id', turnoId)
+    .eq('paciente_id', user.id)
+    .select('id');
+
+  if (error || !data?.length) return { error: 'No pudimos ocultar la sesión.' };
+  return { ok: true as const };
+}

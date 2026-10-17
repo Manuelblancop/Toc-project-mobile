@@ -100,6 +100,82 @@ export async function cargarAgenda(): Promise<{ doctores: DoctorAgenda[]; puntos
   };
 }
 
+export type TurnoPropio = {
+  id: string;
+  profesional: string;
+  cuando: string;
+  estado: string;
+};
+
+export async function cargarMisTurnos(): Promise<TurnoPropio[] | { error: string }> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: 'No autorizado' };
+
+  const { data, error } = await supabase
+    .from('turnos')
+    .select('id, fecha_hora, estado, doctor_id')
+    .eq('paciente_id', user.id)
+    .eq('oculto_para_paciente', false)
+    .in('estado', ['CONFIRMADO', 'COMPLETADO'])
+    .gte('fecha_hora', new Date().toISOString())
+    .order('fecha_hora', { ascending: true });
+
+  if (error) return { error: 'No pudimos cargar tus turnos.' };
+
+  const doctorIds = [...new Set((data ?? []).map((turno) => String(turno.doctor_id)))];
+  const nombres = doctorIds.length
+    ? await supabase.from('doctores_agenda').select('user_id, nombre').in('user_id', doctorIds)
+    : { data: [] as { user_id: string; nombre: string }[] };
+  const nombreDe = new Map((nombres.data ?? []).map((fila) => [String(fila.user_id), String(fila.nombre ?? '')]));
+
+  return (data ?? []).map((turno) => ({
+    id: String(turno.id),
+    profesional: nombreDe.get(String(turno.doctor_id)) || 'Profesional',
+    cuando: new Date(String(turno.fecha_hora)).toLocaleString('es-AR', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: ZONA_AR,
+    }),
+    estado: String(turno.estado),
+  }));
+}
+
+export async function pedirSala(turnoId: string) {
+  const base = process.env.EXPO_PUBLIC_AURA_WEB_URL?.replace(/\/+$/, '');
+  if (!base) return { error: 'Falta EXPO_PUBLIC_AURA_WEB_URL.' };
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) return { error: 'No autorizado' };
+
+  let respuesta: Response;
+  try {
+    respuesta = await fetch(`${base}/api/daily/mobile/crear`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ turnoId }),
+    });
+  } catch {
+    return { error: 'No pudimos conectar la videollamada.' };
+  }
+
+  const cuerpo = (await respuesta.json().catch(() => null)) as { url?: string; error?: string } | null;
+  if (!respuesta.ok || !cuerpo?.url) {
+    return { error: cuerpo?.error || 'No pudimos crear la sala de videollamada' };
+  }
+  return { url: cuerpo.url };
+}
+
 export async function pedirLinkDePago(doctorId: string, horario: string, puntosUsados: number) {
   const base = process.env.EXPO_PUBLIC_AURA_WEB_URL?.replace(/\/+$/, '');
   if (!base) return { error: 'Falta EXPO_PUBLIC_AURA_WEB_URL para pedir el link de pago.' };

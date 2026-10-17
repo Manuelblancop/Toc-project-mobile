@@ -92,6 +92,7 @@ export function PacienteChrome({
           <Text style={styles.brand}>
             Toc <Text style={styles.brandProject}>Project</Text>
           </Text>
+          <View style={styles.headerBalance} />
         </View>
       ) : null}
 
@@ -206,6 +207,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#e2e8f0',
   },
   menuButton: {
+    minWidth: 72,
     borderWidth: 1,
     borderColor: '#e2e8f0',
     borderRadius: 8,
@@ -218,10 +220,15 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   brand: {
+    flex: 1,
+    textAlign: 'center',
     color: '#0f172a',
     fontSize: 16,
     fontWeight: '600',
     letterSpacing: -0.3,
+  },
+  headerBalance: {
+    minWidth: 72,
   },
   brandProject: {
     color: '#064e3b',
