@@ -1,3 +1,4 @@
+import { claveHoyArgentina } from '@/lib/emociones';
 import { supabase } from '@/lib/supabase';
 
 export const DIAS_ERP = [
@@ -277,26 +278,150 @@ export type ActividadErp = {
   titulo: string;
   detalle: string;
   cuando: string;
+  fecha: number;
 };
 
-export async function actividadErpReciente(pacienteId: string): Promise<ActividadErp[]> {
-  const { data, error } = await supabase
-    .from('historial_sesiones')
-    .select('id, completado_at, ejercicios_erp(nombre)')
-    .eq('paciente_id', pacienteId)
-    .order('completado_at', { ascending: false })
-    .limit(3)
-    .returns<FilaHistorial[]>();
+export type DiaProgreso = {
+  etiqueta: string;
+  clave: string;
+  esHoy: boolean;
+  activo: boolean;
+};
 
-  if (error || !data) return [];
+export type ProgresoSemanal = {
+  dias: DiaProgreso[];
+  diasConActividad: number;
+  ejerciciosDesdeLunes: number;
+};
 
-  return data.map((sesion) => {
+const ETIQUETAS_SEMANA = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'] as const;
+
+type FilaAsignadoCompletado = {
+  id: string;
+  titulo: string;
+  dia_asignado: string;
+  created_at: string;
+};
+
+function fechaCalendarioArgentina(ahora = new Date()) {
+  return new Date(`${claveHoyArgentina(ahora)}T00:00:00.000Z`);
+}
+
+function inicioLunesSemana(ahora = new Date()) {
+  const hoy = fechaCalendarioArgentina(ahora);
+  const diff = (hoy.getUTCDay() + 6) % 7;
+  const lunes = new Date(hoy);
+  lunes.setUTCDate(hoy.getUTCDate() - diff);
+  return lunes;
+}
+
+function diasDeLaSemana(ahora = new Date()) {
+  const hoy = claveHoyArgentina(ahora);
+  const lunes = inicioLunesSemana(ahora);
+  return ETIQUETAS_SEMANA.map((etiqueta, indice) => {
+    const fecha = new Date(lunes);
+    fecha.setUTCDate(lunes.getUTCDate() + indice);
+    const clave = fecha.toISOString().slice(0, 10);
+    return { etiqueta, dia: DIAS_ERP[indice], clave, esHoy: clave === hoy };
+  });
+}
+
+function instanteDe(valor: string) {
+  const texto = valor.trim();
+  const tieneZona = /(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(texto);
+  const normalizada = texto.includes('T') ? texto : texto.replace(' ', 'T');
+  const fecha = new Date(tieneZona ? normalizada : `${normalizada}Z`);
+  return Number.isNaN(fecha.getTime()) ? null : fecha;
+}
+
+function claveArgentinaDe(valor: string) {
+  const fecha = instanteDe(valor);
+  return fecha ? claveHoyArgentina(fecha) : null;
+}
+
+export async function resumenErpEnInicio(pacienteId: string): Promise<{
+  actividad: ActividadErp[];
+  progreso: ProgresoSemanal;
+}> {
+  const semana = diasDeLaSemana();
+  const clavesSemana = new Set(semana.map((dia) => dia.clave));
+  const vacio: ProgresoSemanal = {
+    dias: semana.map((dia) => ({
+      etiqueta: dia.etiqueta,
+      clave: dia.clave,
+      esHoy: dia.esHoy,
+      activo: false,
+    })),
+    diasConActividad: 0,
+    ejerciciosDesdeLunes: 0,
+  };
+
+  const [historial, asignados] = await Promise.all([
+    supabase
+      .from('historial_sesiones')
+      .select('id, completado_at, ejercicios_erp(nombre)')
+      .eq('paciente_id', pacienteId)
+      .order('completado_at', { ascending: false })
+      .limit(100)
+      .returns<FilaHistorial[]>(),
+    supabase
+      .from('ejercicios_asignados')
+      .select('id, titulo, dia_asignado, created_at')
+      .eq('paciente_id', pacienteId)
+      .eq('completado', true)
+      .order('created_at', { ascending: false })
+      .returns<FilaAsignadoCompletado[]>(),
+  ]);
+
+  if (historial.error && asignados.error) return { actividad: [], progreso: vacio };
+
+  const sesiones = historial.data ?? [];
+  const completados = asignados.data ?? [];
+  const clavesHistorial = new Set(
+    sesiones
+      .map((sesion) => claveArgentinaDe(String(sesion.completado_at)))
+      .filter((clave): clave is string => clave != null && clavesSemana.has(clave)),
+  );
+  const diasCompletados = new Set(completados.map((ejercicio) => ejercicio.dia_asignado));
+  const dias = semana.map((dia) => ({
+    etiqueta: dia.etiqueta,
+    clave: dia.clave,
+    esHoy: dia.esHoy,
+    activo: diasCompletados.has(dia.dia) || clavesHistorial.has(dia.clave),
+  }));
+  const sesionesDeLaSemana = sesiones.filter((sesion) => {
+    const clave = claveArgentinaDe(String(sesion.completado_at));
+    return clave != null && clavesSemana.has(clave);
+  });
+
+  const actividadHistorial: ActividadErp[] = sesiones.slice(0, 3).map((sesion) => {
     const ejercicio = Array.isArray(sesion.ejercicios_erp) ? sesion.ejercicios_erp[0] : sesion.ejercicios_erp;
+    const instante = instanteDe(String(sesion.completado_at));
     return {
       id: sesion.id,
       titulo: 'Ejercicio ERP completado',
       detalle: ejercicio?.nombre ?? 'Ejercicio ERP',
       cuando: etiquetaActividadArgentina(String(sesion.completado_at)),
+      fecha: instante?.getTime() ?? 0,
     };
   });
+  const actividadAsignada: ActividadErp[] = completados.map((ejercicio) => {
+    const instante = instanteDe(String(ejercicio.created_at));
+    return {
+      id: ejercicio.id,
+      titulo: 'Ejercicio ERP completado',
+      detalle: ejercicio.titulo,
+      cuando: etiquetaActividadArgentina(String(ejercicio.created_at)),
+      fecha: instante?.getTime() ?? 0,
+    };
+  });
+
+  return {
+    actividad: [...actividadAsignada, ...actividadHistorial].sort((a, b) => b.fecha - a.fecha),
+    progreso: {
+      dias,
+      diasConActividad: dias.filter((dia) => dia.activo).length,
+      ejerciciosDesdeLunes: completados.length + sesionesDeLaSemana.length,
+    },
+  };
 }

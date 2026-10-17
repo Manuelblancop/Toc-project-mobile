@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
 import {
   Modal,
   Pressable,
@@ -18,7 +19,7 @@ import {
   saludoDelDia,
   type PuntoEvolucionEmocional,
 } from '@/lib/emociones';
-import type { ActividadErp } from '@/lib/erp';
+import type { ActividadErp, ProgresoSemanal } from '@/lib/erp';
 import {
   cargarInicio,
   descuentoAplicadoTurno,
@@ -27,6 +28,12 @@ import {
 } from '@/lib/paciente';
 
 const VALOR_PUNTO = 10;
+
+const PROGRESO_VACIO: ProgresoSemanal = {
+  dias: [],
+  diasConActividad: 0,
+  ejerciciosDesdeLunes: 0,
+};
 
 export default function HomePacienteScreen() {
   const [cargando, setCargando] = useState(true);
@@ -39,35 +46,41 @@ export default function HomePacienteScreen() {
   const [error, setError] = useState<string | null>(null);
   const [serie, setSerie] = useState<PuntoEvolucionEmocional[]>([]);
   const [actividadErp, setActividadErp] = useState<ActividadErp[]>([]);
+  const [progreso, setProgreso] = useState<ProgresoSemanal>(PROGRESO_VACIO);
   const [triage, setTriage] = useState('');
   const [textoTriage, setTextoTriage] = useState('');
   const [modalAbierto, setModalAbierto] = useState(false);
   const [guardandoTriage, setGuardandoTriage] = useState(false);
   const [errorTriage, setErrorTriage] = useState<string | null>(null);
+  const cargoInicio = useRef(false);
 
-  useEffect(() => {
-    let activo = true;
-    void (async () => {
-      const inicio = await cargarInicio();
-      if (!activo) return;
-      if ('error' in inicio) {
-        setErrorCarga(inicio.error);
+  useFocusEffect(
+    useCallback(() => {
+      let activo = true;
+      void (async () => {
+        const inicio = await cargarInicio();
+        if (!activo) return;
+        if ('error' in inicio) {
+          setCargando(false);
+          if (!cargoInicio.current) setErrorCarga(inicio.error);
+          return;
+        }
+        cargoInicio.current = true;
+        setNombre(inicio.nombre);
+        setPuntos(inicio.points);
+        setRegistrado(Boolean(inicio.emojiHoy));
+        setEmoji(inicio.emojiHoy);
+        setSerie(inicio.puntos);
+        setActividadErp(inicio.actividadErp);
+        setProgreso(inicio.progreso);
+        setTriage(inicio.triageActual);
         setCargando(false);
-        return;
-      }
-      setNombre(inicio.nombre);
-      setPuntos(inicio.points);
-      setRegistrado(Boolean(inicio.emojiHoy));
-      setEmoji(inicio.emojiHoy);
-      setSerie(inicio.puntos);
-      setActividadErp(inicio.actividadErp);
-      setTriage(inicio.triageActual);
-      setCargando(false);
-    })();
-    return () => {
-      activo = false;
-    };
-  }, []);
+      })();
+      return () => {
+        activo = false;
+      };
+    }, []),
+  );
 
   const descuento = descuentoAplicadoTurno(puntos);
   const valorCheckin = (PUNTOS_POR_ANIMO * VALOR_PUNTO).toLocaleString('es-AR', {
@@ -201,6 +214,32 @@ export default function HomePacienteScreen() {
           <Pressable accessibilityRole="button" onPress={abrirTriage} style={styles.botonMotivo}>
             <Text style={styles.botonMotivoText}>📝 Actualizar Triage / Motivo de consulta</Text>
           </Pressable>
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.progresoEncabezado}>
+            <Text style={styles.progresoTitulo}>Progreso semanal</Text>
+            <Text style={styles.progresoCuenta}>{progreso.diasConActividad} de 7 días</Text>
+          </View>
+          <View style={styles.progresoDias}>
+            {progreso.dias.map((dia) => (
+              <View key={dia.clave} style={styles.progresoDia}>
+                <View
+                  style={[
+                    styles.progresoBarra,
+                    dia.activo ? styles.progresoBarraActiva : styles.progresoBarraVacia,
+                    dia.esHoy && !dia.activo && styles.progresoBarraHoy,
+                  ]}
+                />
+                <Text style={[styles.progresoEtiqueta, dia.esHoy && styles.progresoEtiquetaHoy]}>{dia.etiqueta}</Text>
+              </View>
+            ))}
+          </View>
+          <Text style={styles.progresoDetalle}>
+            {progreso.ejerciciosDesdeLunes === 0
+              ? 'Esta semana todavía no hay ejercicios ERP.'
+              : `${progreso.ejerciciosDesdeLunes} ${progreso.ejerciciosDesdeLunes === 1 ? 'ejercicio' : 'ejercicios'} desde el lunes.`}
+          </Text>
         </View>
 
         <View>
@@ -426,6 +465,59 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     fontSize: 14,
     fontWeight: '600',
+  },
+  progresoEncabezado: {
+    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  progresoTitulo: {
+    color: '#0f172a',
+    fontSize: 18,
+    fontWeight: '500',
+  },
+  progresoCuenta: {
+    color: '#64748b',
+    fontSize: 14,
+  },
+  progresoDias: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  progresoDia: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  progresoBarra: {
+    alignSelf: 'stretch',
+    height: 8,
+    borderRadius: 999,
+  },
+  progresoBarraActiva: {
+    backgroundColor: '#5DCAA5',
+  },
+  progresoBarraVacia: {
+    backgroundColor: '#f1f5f9',
+  },
+  progresoBarraHoy: {
+    borderWidth: 1,
+    borderColor: '#d4d4d4',
+  },
+  progresoEtiqueta: {
+    marginTop: 8,
+    color: '#64748b',
+    fontSize: 12,
+  },
+  progresoEtiquetaHoy: {
+    color: '#0f172a',
+    fontWeight: '500',
+  },
+  progresoDetalle: {
+    marginTop: 12,
+    color: '#64748b',
+    fontSize: 14,
   },
   actividadTitulo: {
     marginBottom: 16,

@@ -1,4 +1,4 @@
-import { actividadErpReciente, type ActividadErp } from '@/lib/erp';
+import { resumenErpEnInicio, type ActividadErp, type ProgresoSemanal } from '@/lib/erp';
 import { supabase } from '@/lib/supabase';
 import {
   claveHoyArgentina,
@@ -25,6 +25,7 @@ export type InicioPaciente = {
   emojiHoy: string | null;
   puntos: PuntoEvolucionEmocional[];
   actividadErp: ActividadErp[];
+  progreso: ProgresoSemanal;
 };
 
 export async function cargarInicio(): Promise<InicioPaciente | { error: string }> {
@@ -33,7 +34,7 @@ export async function cargarInicio(): Promise<InicioPaciente | { error: string }
   } = await supabase.auth.getUser();
   if (!user) return { error: 'No autorizado' };
 
-  const [perfil, usuario, historial, actividadErp] = await Promise.all([
+  const [perfil, usuario, historial, resumenErp] = await Promise.all([
     supabase.from('perfil_paciente').select('points, triage_actual').eq('user_id', user.id).maybeSingle(),
     supabase.from('usuarios').select('nombre').eq('id', user.id).maybeSingle(),
     supabase
@@ -42,7 +43,7 @@ export async function cargarInicio(): Promise<InicioPaciente | { error: string }
       .eq('paciente_id', user.id)
       .order('fecha', { ascending: false })
       .limit(100),
-    actividadErpReciente(user.id),
+    resumenErpEnInicio(user.id),
   ]);
 
   if (perfil.error || usuario.error || historial.error || !perfil.data) {
@@ -58,7 +59,8 @@ export async function cargarInicio(): Promise<InicioPaciente | { error: string }
     points: perfil.data.points ?? 0,
     triageActual: perfil.data.triage_actual ?? '',
     emojiHoy: deHoy?.emoji ?? null,
-    actividadErp,
+    actividadErp: resumenErp.actividad,
+    progreso: resumenErp.progreso,
     puntos: registros
       .slice()
       .reverse()
