@@ -1,6 +1,6 @@
 import { router, useFocusEffect, useLocalSearchParams, useRootNavigationState } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
-import { Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AvisoPausaAura } from '@/components/doctor/aviso-pausa';
@@ -12,6 +12,7 @@ import {
   nombreCsv,
   rehabilitarChat,
   asignarEjercicioPaciente,
+  eliminarEjercicioAsignado,
   type FichaPaciente,
 } from '@/lib/doctor';
 
@@ -66,6 +67,14 @@ export default function FichaPacienteScreen() {
       void cargar();
     }, [cargar]),
   );
+
+  function quitarEjercicio(ejercicioId: string) {
+    setFicha((actual) =>
+      actual
+        ? { ...actual, ejercicios: actual.ejercicios.filter((ejercicio) => ejercicio.id !== ejercicioId) }
+        : actual,
+    );
+  }
 
   const notaActual = ficha?.notas.find((nota) => nota.turnoId === turnoId) ?? null;
 
@@ -177,7 +186,9 @@ export default function FichaPacienteScreen() {
             })}
           </View>
 
-          {tab === 'ERP' ? <SeccionErp ficha={ficha} pacienteId={pacienteId} onAsignado={cargar} /> : null}
+          {tab === 'ERP' ? (
+            <SeccionErp ficha={ficha} pacienteId={pacienteId} onAsignado={cargar} onEliminado={quitarEjercicio} />
+          ) : null}
           {tab === 'Emociones' ? <SeccionEmociones ficha={ficha} /> : null}
           {tab === 'Notas' ? (
             <View style={styles.card}>
@@ -255,13 +266,43 @@ function SeccionErp({
   ficha,
   pacienteId,
   onAsignado,
+  onEliminado,
 }: {
   ficha: FichaPaciente;
   pacienteId: string;
   onAsignado: () => Promise<void>;
+  onEliminado: (ejercicioId: string) => void;
 }) {
+  const [eliminandoId, setEliminandoId] = useState<string | null>(null);
+  const [errorEliminar, setErrorEliminar] = useState('');
+
+  function pedirEliminar(ejercicioId: string) {
+    if (eliminandoId) return;
+    Alert.alert('Eliminar ejercicio', '¿Querés eliminar este ejercicio asignado?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Eliminar',
+        style: 'destructive',
+        onPress: () => void confirmarEliminar(ejercicioId),
+      },
+    ]);
+  }
+
+  async function confirmarEliminar(ejercicioId: string) {
+    setEliminandoId(ejercicioId);
+    setErrorEliminar('');
+    const resultado = await eliminarEjercicioAsignado(ejercicioId);
+    setEliminandoId(null);
+    if ('error' in resultado) {
+      setErrorEliminar(resultado.error ?? 'No pudimos eliminar el ejercicio.');
+      return;
+    }
+    onEliminado(ejercicioId);
+  }
+
   return (
     <View>
+      {errorEliminar ? <Text style={styles.error}>{errorEliminar}</Text> : null}
       {ficha.ejercicios.length === 0 ? (
         <View style={styles.card}>
           <Text style={styles.vacio}>Este paciente todavía no tiene ejercicios asignados.</Text>
@@ -277,6 +318,15 @@ function SeccionErp({
                     <Text style={[styles.pillTexto, { color: color.texto }]}>{ejercicio.dificultad}</Text>
                   </View>
                   <Text style={styles.meta}>{ejercicio.dia} · {ejercicio.duracion}</Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Eliminar ejercicio"
+                    disabled={eliminandoId === ejercicio.id}
+                    onPress={() => pedirEliminar(ejercicio.id)}
+                    style={[styles.papelera, eliminandoId === ejercicio.id && styles.papeleraOff]}
+                  >
+                    <Text style={styles.papeleraIcono}>🗑</Text>
+                  </Pressable>
                 </View>
                 <Text style={styles.cardTitulo}>{ejercicio.titulo}</Text>
                 <Text style={styles.cuerpo}>{ejercicio.descripcion}</Text>
@@ -473,7 +523,10 @@ const styles = StyleSheet.create({
   fila: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   pill: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
   pillTexto: { fontSize: 12, fontWeight: '600' },
-  meta: { color: '#64748b', fontSize: 12 },
+  meta: { flex: 1, color: '#64748b', fontSize: 12 },
+  papelera: { borderRadius: 8, padding: 8 },
+  papeleraOff: { opacity: 0.5 },
+  papeleraIcono: { fontSize: 16, color: '#94a3b8' },
   cuerpo: { marginTop: 8, color: '#475569', fontSize: 14, lineHeight: 20 },
   estado: { marginTop: 10, color: '#3d6b52', fontSize: 14, fontWeight: '600' },
   feedback: { marginTop: 4, color: '#334155', fontSize: 14 },

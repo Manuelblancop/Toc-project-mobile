@@ -8,7 +8,6 @@ import { BadgeTurno } from '@/components/doctor/badge-turno';
 import { EmeraldSpinner } from '@/components/emerald-spinner';
 import {
   COMISION_POR_CONSULTA,
-  NETO_ESTIMADO,
   TICKET_BASE,
   cargarPanelDoctor,
   guardarNotaClinica,
@@ -85,11 +84,21 @@ export default function DoctorHomeScreen() {
       setError(resultado.error ?? 'No pudimos ocultar el turno.');
       return;
     }
-    setPanel((actual) =>
-      actual
-        ? { ...actual, agenda: actual.agenda.filter((turno) => turno.id !== turnoId) }
-        : actual,
-    );
+    setPanel((actual) => {
+      if (!actual) return actual;
+      const agenda = actual.agenda.filter((turno) => turno.id !== turnoId);
+      const pacientes = new Map<string, (typeof agenda)[number]>();
+      for (const turno of agenda) {
+        if (!pacientes.has(turno.pacienteId)) pacientes.set(turno.pacienteId, turno);
+      }
+      return {
+        ...actual,
+        agenda,
+        pacientes: [...pacientes.values()]
+          .map((turno) => ({ id: turno.pacienteId, nombre: turno.pacienteNombre, pausa: turno.pausa }))
+          .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
+      };
+    });
   }
 
   function guardarNotaEnPanel(turnoId: string, notaId: string, contenido: string) {
@@ -132,9 +141,9 @@ export default function DoctorHomeScreen() {
       {panel ? (
         <>
           <View style={styles.kpis}>
-            <Kpi etiqueta="Ticket base" valor={pesos(TICKET_BASE)} />
-            <Kpi etiqueta="Comisión 12%" valor={pesos(COMISION_POR_CONSULTA)} />
-            <Kpi etiqueta="Neto estimado" valor={pesos(NETO_ESTIMADO)} />
+            <Kpi etiqueta="Ticket base facturado" valor={pesos(panel.facturado)} />
+            <Kpi etiqueta="Comisión 12% del ticket" valor={pesos(panel.comision)} />
+            <Kpi etiqueta="Neto estimado" valor={pesos(panel.neto)} />
             <Kpi etiqueta="Reputación" valor={reputacionDe(panel.reputacion)} />
           </View>
           <Text style={styles.notaKpi}>
@@ -150,20 +159,18 @@ export default function DoctorHomeScreen() {
             </View>
           ) : (
             <>
-              <View style={styles.grupo}>
-                <Text style={styles.grupoTitulo}>Pendientes de hoy</Text>
-                {pendientes.length === 0 ? (
-                  <Text style={styles.vacio}>No hay turnos pendientes.</Text>
-                ) : (
-                  pendientes.map((turno) => (
+              {pendientes.length > 0 ? (
+                <View style={styles.grupo}>
+                  <Text style={styles.grupoTitulo}>Pendientes de hoy</Text>
+                  {pendientes.map((turno) => (
                     <TarjetaTurno
                       key={turno.id}
                       turno={turno}
                       onPress={() => abrirFicha(turno.pacienteId)}
                     />
-                  ))
-                )}
-              </View>
+                  ))}
+                </View>
+              ) : null}
               {completadas.length > 0 ? (
                 <Acordeon
                   titulo={`Ver completadas (${etiquetaTurnos(completadas.length)})`}

@@ -7,7 +7,6 @@ export const TICKET_BASE = 30000;
 export const COMISION_POR_CONSULTA = Math.round(TICKET_BASE * 0.12);
 export const NETO_ESTIMADO = TICKET_BASE - COMISION_POR_CONSULTA;
 
-const INICIO_DIA = '2026-11-13T00:00:00-03:00';
 const FIN_DIA = '2026-11-14T00:00:00-03:00';
 const ZONA = 'America/Argentina/Buenos_Aires';
 
@@ -35,6 +34,9 @@ export type PanelDoctor = {
   nombre: string;
   reputacion: number | null;
   pacientesActivos: number;
+  facturado: number;
+  comision: number;
+  neto: number;
   agenda: TurnoAgenda[];
   pacientes: PacienteAgenda[];
 };
@@ -171,25 +173,24 @@ export async function cargarPanelDoctor(): Promise<
   const sesion = await sesionDoctor();
   if (sesion.destino) return { destino: sesion.destino };
 
-  const [turnos, nombres, pausas, activos] = await Promise.all([
+  const metricas = await metricasDelPanel();
+  if ('error' in metricas) throw new Error(metricas.error);
+
+  const [turnos, nombres, pausas] = await Promise.all([
     supabase
       .from('turnos')
       .select('id, fecha_hora, estado, paciente_id')
       .eq('doctor_id', sesion.userId)
       .eq('oculto_para_doctor', false)
-      .gte('fecha_hora', INICIO_DIA)
+      .in('estado', ['CONFIRMADO', 'COMPLETADO', 'CANCELADO'])
+      .gte('fecha_hora', new Date().toISOString())
       .lt('fecha_hora', FIN_DIA)
       .order('fecha_hora', { ascending: true }),
     supabase.from('pacientes_del_doctor').select('user_id, nombre'),
     supabase.from('pausas_aura_doctor').select('paciente_id, ocurrido_en'),
-    supabase
-      .from('turnos')
-      .select('paciente_id')
-      .eq('doctor_id', sesion.userId)
-      .in('estado', ['CONFIRMADO', 'COMPLETADO']),
   ]);
 
-  if (turnos.error || nombres.error || pausas.error || activos.error) {
+  if (turnos.error || nombres.error || pausas.error) {
     throw new Error('No pudimos cargar el panel.');
   }
 
@@ -270,18 +271,62 @@ export async function cargarPanelDoctor(): Promise<
   }
 
   const pacientes = [...pacientesMapa.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
-  const pacientesActivos = new Set((activos.data ?? []).map((fila) => String(fila.paciente_id))).size;
 
   return {
     destino: null,
     panel: {
       nombre: sesion.nombre,
       reputacion: sesion.rating,
-      pacientesActivos,
+      pacientesActivos: metricas.pacientesActivos,
+      facturado: metricas.bruto,
+      comision: metricas.comision,
+      neto: metricas.neto,
       agenda,
       pacientes,
     },
   };
+}
+
+async function metricasDelPanel() {
+  const base = process.env.EXPO_PUBLIC_AURA_WEB_URL?.replace(/\/+$/, '');
+  if (!base) return { error: 'Falta EXPO_PUBLIC_AURA_WEB_URL.' };
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) return { error: 'No autorizado' };
+
+  let respuesta: Response;
+  try {
+    respuesta = await fetch(`${base}/api/doctor/mobile/panel`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    return { error: 'No pudimos cargar el panel.' };
+  }
+
+  const cuerpo = (await respuesta.json().catch(() => null)) as {
+    error?: string;
+    bruto?: unknown;
+    comision?: unknown;
+    neto?: unknown;
+    pacientesActivos?: unknown;
+  } | null;
+
+  const bruto = numero(cuerpo?.bruto);
+  const comision = numero(cuerpo?.comision);
+  const neto = numero(cuerpo?.neto);
+  const pacientesActivos = numero(cuerpo?.pacientesActivos);
+  if (!respuesta.ok || bruto == null || comision == null || neto == null || pacientesActivos == null) {
+    return { error: cuerpo?.error || 'No pudimos cargar el panel.' };
+  }
+
+  return { bruto, comision, neto, pacientesActivos };
+}
+
+function numero(valor: unknown) {
+  return typeof valor === 'number' && Number.isFinite(valor) ? valor : null;
 }
 
 export async function cargarFichaPaciente(pacienteId: string): Promise<
@@ -570,6 +615,25 @@ export async function asignarEjercicioPaciente(pedido: {
 
   const cuerpo = (await respuesta.json().catch(() => null)) as { error?: string } | null;
   if (!respuesta.ok) return { error: cuerpo?.error || 'No se pudo asignar el ejercicio.' };
+  return { ok: true as const };
+}
+
+export async function eliminarEjercicioAsignado(ejercicioId: string) {
+  if (!ejercicioId) return { error: 'El ejercicio no es válido' };
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: 'No autorizado' };
+
+  const { data, error } = await supabase
+    .from('ejercicios_asignados')
+    .delete()
+    .eq('id', ejercicioId)
+    .eq('doctor_id', user.id)
+    .select('id');
+
+  if (error || !data?.length) return { error: 'No pudimos eliminar el ejercicio.' };
   return { ok: true as const };
 }
 
