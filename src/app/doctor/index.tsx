@@ -1,6 +1,17 @@
 import { router, useFocusEffect, useRootNavigationState } from 'expo-router';
 import { useCallback, useState, type ReactNode } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AvisoPausaAura } from '@/components/doctor/aviso-pausa';
@@ -117,6 +128,11 @@ export default function DoctorHomeScreen() {
   }
 
   return (
+    <KeyboardAvoidingView
+      style={styles.screen}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
     <ScrollView
       style={styles.screen}
       keyboardShouldPersistTaps="handled"
@@ -239,9 +255,113 @@ export default function DoctorHomeScreen() {
               </Pressable>
             ))
           )}
+
+          <Text style={styles.seccion}>Notas clínicas</Text>
+          <ModuloNotas agenda={agenda} onGuardada={guardarNotaEnPanel} />
         </>
       ) : null}
     </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+function ModuloNotas({
+  agenda,
+  onGuardada,
+}: {
+  agenda: TurnoAgenda[];
+  onGuardada: (turnoId: string, notaId: string, contenido: string) => void;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const [turnoId, setTurnoId] = useState('');
+  const [texto, setTexto] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [aviso, setAviso] = useState('');
+  const [ok, setOk] = useState(false);
+  const elegido = agenda.find((turno) => turno.id === turnoId) ?? null;
+
+  function elegir(turno: TurnoAgenda) {
+    setTurnoId(turno.id);
+    setTexto(turno.nota);
+    setOk(false);
+    setAviso('');
+    setAbierto(false);
+  }
+
+  async function guardar() {
+    if (guardando || !elegido || !texto.trim()) return;
+    setGuardando(true);
+    setOk(false);
+    setAviso('');
+    const resultado = await guardarNotaClinica(elegido.pacienteId, elegido.id, texto);
+    setGuardando(false);
+    if ('error' in resultado) {
+      setAviso(resultado.error ?? 'No pudimos guardar la nota.');
+      return;
+    }
+    const limpio = texto.trim();
+    setTexto(limpio);
+    setOk(true);
+    onGuardada(elegido.id, resultado.notaId, limpio);
+  }
+
+  return (
+    <View style={styles.card}>
+      <Pressable accessibilityRole="button" onPress={() => setAbierto(true)} style={styles.selector}>
+        <Text style={elegido ? styles.selectorTexto : styles.selectorPlaceholder}>
+          {elegido ? `${elegido.pacienteNombre} - ${elegido.hora}` : 'Seleccioná un paciente de hoy...'}
+        </Text>
+      </Pressable>
+      <TextInput
+        value={texto}
+        onChangeText={(valor) => {
+          setTexto(valor);
+          setOk(false);
+        }}
+        editable={!guardando}
+        multiline
+        placeholder="Escribí la evolución clínica acá..."
+        placeholderTextColor="#64748b"
+        textAlignVertical="top"
+        style={styles.notaClinicaInput}
+      />
+      <Pressable
+        accessibilityRole="button"
+        disabled={guardando || !elegido || !texto.trim()}
+        onPress={() => void guardar()}
+        style={[styles.notaBoton, (guardando || !elegido || !texto.trim()) && styles.notaBotonOff]}
+      >
+        <Text style={[styles.notaBotonTexto, (guardando || !elegido || !texto.trim()) && styles.notaBotonTextoOff]}>
+          {guardando ? 'Guardando...' : 'Guardar Nota'}
+        </Text>
+      </Pressable>
+      {aviso ? <Text style={styles.notaError}>{aviso}</Text> : null}
+      {ok ? <Text style={styles.notaOk}>Nota guardada.</Text> : null}
+
+      <Modal visible={abierto} transparent animationType="fade" onRequestClose={() => setAbierto(false)}>
+        <Pressable accessibilityRole="button" onPress={() => setAbierto(false)} style={styles.selectorFondo}>
+          <Pressable style={styles.selectorDialogo} onPress={() => {}}>
+            <Text style={styles.selectorTitulo}>Seleccioná un paciente de hoy...</Text>
+            <ScrollView keyboardShouldPersistTaps="handled" style={styles.selectorLista}>
+              {agenda.length === 0 ? (
+                <Text style={styles.vacio}>No hay turnos en la agenda.</Text>
+              ) : (
+                agenda.map((turno) => (
+                  <Pressable
+                    key={turno.id}
+                    accessibilityRole="button"
+                    onPress={() => elegir(turno)}
+                    style={styles.selectorOpcion}
+                  >
+                    <Text style={styles.selectorTexto}>{turno.pacienteNombre} - {turno.hora}</Text>
+                  </Pressable>
+                ))
+              )}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </View>
   );
 }
 
@@ -461,4 +581,38 @@ const styles = StyleSheet.create({
   notaBotonTextoOff: { color: '#94a3b8' },
   notaError: { marginTop: 8, color: '#dc2626', fontSize: 14 },
   notaOk: { marginTop: 8, color: '#2563eb', fontSize: 14 },
+  selector: {
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 8,
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+  },
+  selectorTexto: { color: '#0f172a', fontSize: 14 },
+  selectorPlaceholder: { color: '#64748b', fontSize: 14 },
+  notaClinicaInput: {
+    minHeight: 160,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 8,
+    backgroundColor: '#f8fafc',
+    padding: 12,
+    color: '#0f172a',
+    fontSize: 14,
+  },
+  selectorFondo: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15, 23, 42, 0.45)' },
+  selectorDialogo: {
+    maxHeight: '70%',
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 16,
+    paddingTop: 20,
+    paddingBottom: 28,
+  },
+  selectorTitulo: { marginBottom: 8, color: '#0f172a', fontSize: 16, fontWeight: '600' },
+  selectorLista: { flexGrow: 0 },
+  selectorOpcion: { borderBottomWidth: 1, borderBottomColor: '#f1f5f9', paddingVertical: 14 },
 });

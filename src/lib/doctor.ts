@@ -668,6 +668,86 @@ export async function cargarPerfilMedico(): Promise<
   };
 }
 
+export type HorarioSemanal = {
+  diaSemana: number;
+  horaInicio: string;
+  horaFin: string;
+  activo: boolean;
+};
+
+export async function cargarDisponibilidad(): Promise<{ horarios: HorarioSemanal[] } | { error: string }> {
+  const base = process.env.EXPO_PUBLIC_AURA_WEB_URL?.replace(/\/+$/, '');
+  if (!base) return { error: 'Falta EXPO_PUBLIC_AURA_WEB_URL.' };
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) return { error: 'No autorizado' };
+
+  let respuesta: Response;
+  try {
+    respuesta = await fetch(`${base}/api/doctor/mobile/disponibilidad`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    return { error: 'No pudimos cargar tus horarios.' };
+  }
+
+  const cuerpo = (await respuesta.json().catch(() => null)) as {
+    error?: string;
+    horarios?: { diaSemana?: unknown; horaInicio?: unknown; horaFin?: unknown; activo?: unknown }[];
+  } | null;
+  if (!respuesta.ok || !Array.isArray(cuerpo?.horarios)) {
+    return { error: cuerpo?.error || 'No pudimos cargar tus horarios.' };
+  }
+
+  return {
+    horarios: cuerpo.horarios.flatMap((fila) => {
+      if (typeof fila.diaSemana !== 'number' || typeof fila.horaInicio !== 'string' || typeof fila.horaFin !== 'string') {
+        return [];
+      }
+      return [
+        {
+          diaSemana: fila.diaSemana,
+          horaInicio: fila.horaInicio.slice(0, 5),
+          horaFin: fila.horaFin.slice(0, 5),
+          activo: fila.activo !== false,
+        },
+      ];
+    }),
+  };
+}
+
+export async function guardarDisponibilidad(horarios: HorarioSemanal[]) {
+  const base = process.env.EXPO_PUBLIC_AURA_WEB_URL?.replace(/\/+$/, '');
+  if (!base) return { error: 'Falta EXPO_PUBLIC_AURA_WEB_URL.' };
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) return { error: 'No autorizado' };
+
+  let respuesta: Response;
+  try {
+    respuesta = await fetch(`${base}/api/doctor/mobile/disponibilidad`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ horarios }),
+    });
+  } catch {
+    return { error: 'No pudimos guardar tus horarios.' };
+  }
+
+  const cuerpo = (await respuesta.json().catch(() => null)) as { error?: string } | null;
+  if (!respuesta.ok) return { error: cuerpo?.error || 'No pudimos guardar tus horarios.' };
+  return { ok: true as const };
+}
+
 export async function guardarEspecialidad(especialidad: string) {
   const texto = especialidad.trim().slice(0, 80);
   const {

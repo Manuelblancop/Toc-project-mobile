@@ -7,7 +7,6 @@ import { EmeraldSpinner } from '@/components/emerald-spinner';
 import {
   cargarAgenda,
   cargarMisTurnos,
-  DIA_PRUEBA_LABEL,
   pedirLinkDePago,
   totalConPuntos,
   totalSinPuntos,
@@ -58,7 +57,12 @@ export default function TurnosScreen() {
   const [doctores, setDoctores] = useState<DoctorAgenda[]>([]);
   const [misTurnos, setMisTurnos] = useState<TurnoPropio[]>([]);
   const [puntos, setPuntos] = useState(0);
-  const [slot, setSlot] = useState<{ doctor: DoctorAgenda; horario: string } | null>(null);
+  const [slot, setSlot] = useState<{
+    doctor: DoctorAgenda;
+    etiqueta: string;
+    horario: string;
+    inicio: string;
+  } | null>(null);
   const [usarPuntos, setUsarPuntos] = useState(false);
   const [pagando, setPagando] = useState(false);
   const [errorPago, setErrorPago] = useState<string | null>(null);
@@ -107,18 +111,18 @@ export default function TurnosScreen() {
   const descuento = descuentoAplicadoTurno(puntosUsados);
   const total = usarPuntos ? totalConPuntos(puntos) : totalSinPuntos();
 
-  function abrir(doctor: DoctorAgenda, horario: string) {
+  function abrir(doctor: DoctorAgenda, etiqueta: string, horario: string, inicio: string) {
     setUsarPuntos(false);
     setErrorPago(null);
     setPagando(false);
-    setSlot({ doctor, horario });
+    setSlot({ doctor, etiqueta, horario, inicio });
   }
 
   async function pagar() {
     if (!slot || pagando) return;
     setPagando(true);
     setErrorPago(null);
-    const resultado = await pedirLinkDePago(slot.doctor.userId, slot.horario, puntosUsados);
+    const resultado = await pedirLinkDePago(slot.doctor.userId, slot.inicio, puntosUsados);
     if ('error' in resultado) {
       setErrorPago(resultado.error ?? 'No pudimos iniciar el pago. Probá de nuevo en unos segundos.');
       setPagando(false);
@@ -192,34 +196,32 @@ export default function TurnosScreen() {
               <Text style={styles.matricula}>Mat. {doctor.matricula}</Text>
               <Text style={styles.enLinea}>En línea</Text>
 
-              <Text style={styles.dia}>{DIA_PRUEBA_LABEL}</Text>
-              <View style={styles.grilla}>
-                {doctor.horarios.map((horario) => {
-                  const elegido = slot?.doctor.userId === doctor.userId && slot.horario === horario.hora;
-                  return (
-                    <Pressable
-                      key={horario.hora}
-                      accessibilityRole="button"
-                      accessibilityState={{ disabled: !horario.libre, selected: elegido }}
-                      disabled={!horario.libre}
-                      onPress={() => abrir(doctor, horario.hora)}
-                      style={[
-                        styles.hora,
-                        horario.libre ? styles.horaLibre : styles.horaOcupada,
-                        elegido && styles.horaElegida,
-                      ]}>
-                      <Text
-                        style={[
-                          styles.horaTexto,
-                          horario.libre ? styles.horaTextoLibre : styles.horaTextoOcupada,
-                          elegido && styles.horaTextoElegida,
-                        ]}>
-                        {horario.hora}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+              {doctor.dias.length === 0 ? (
+                <Text style={styles.sinHorarios}>Sin horarios en los próximos 30 días.</Text>
+              ) : (
+                doctor.dias.map((dia) => (
+                  <View key={dia.clave} style={styles.diaBloque}>
+                    <Text style={styles.dia}>{dia.etiqueta}</Text>
+                    <View style={styles.grilla}>
+                      {dia.horarios.map((horario) => {
+                        const elegido = slot?.doctor.userId === doctor.userId && slot.inicio === horario.inicio;
+                        return (
+                          <Pressable
+                            key={horario.inicio}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected: elegido }}
+                            onPress={() => abrir(doctor, dia.etiqueta, horario.hora, horario.inicio)}
+                            style={[styles.hora, styles.horaLibre, elegido && styles.horaElegida]}>
+                            <Text style={[styles.horaTexto, styles.horaTextoLibre, elegido && styles.horaTextoElegida]}>
+                              {horario.hora}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+                ))
+              )}
             </View>
           ))
         )}
@@ -241,7 +243,7 @@ export default function TurnosScreen() {
 
             <View style={styles.resumen}>
               <Fila etiqueta="Consulta con" valor={slot?.doctor.nombre ?? ''} />
-              <Fila etiqueta="Fecha y hora" valor={`${DIA_PRUEBA_LABEL} · ${slot?.horario ?? ''}`} />
+              <Fila etiqueta="Fecha y hora" valor={slot ? `${slot.etiqueta} · ${slot.horario}` : ''} />
               <Fila etiqueta="Modalidad" valor="Videoconsulta" />
               <Fila etiqueta="Consulta" valor={pesos(PRECIO_BASE)} />
               <Fila etiqueta="Tarifa de servicio (5%)" valor={pesos(TARIFA)} />
@@ -357,7 +359,9 @@ const styles = StyleSheet.create({
   estrellas: { color: '#3d6b52', fontSize: 14 },
   matricula: { marginTop: 8, color: '#7a7f94', fontSize: 12 },
   enLinea: { color: '#3a3d4a', fontSize: 14 },
-  dia: { marginTop: 12, textAlign: 'center', color: '#6b7280', fontSize: 12 },
+  diaBloque: { marginTop: 12 },
+  dia: { marginBottom: 8, color: '#64748b', fontSize: 12, fontWeight: '500' },
+  sinHorarios: { marginTop: 12, textAlign: 'center', color: '#94a3b8', fontSize: 14 },
   grilla: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   hora: { width: '47%', borderRadius: 999, paddingVertical: 8, paddingHorizontal: 16, alignItems: 'center' },
   horaLibre: { backgroundColor: '#ecfdf5' },

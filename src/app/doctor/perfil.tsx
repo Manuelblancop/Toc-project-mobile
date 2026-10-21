@@ -1,10 +1,66 @@
 import { router, useFocusEffect, useRootNavigationState } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EmeraldSpinner } from '@/components/emerald-spinner';
-import { cargarPerfilMedico, guardarEspecialidad, type PerfilMedico } from '@/lib/doctor';
+import {
+  cargarDisponibilidad,
+  cargarPerfilMedico,
+  guardarDisponibilidad,
+  guardarEspecialidad,
+  type HorarioSemanal,
+  type PerfilMedico,
+} from '@/lib/doctor';
+
+const DIAS = [
+  { diaSemana: 1, nombre: 'Lunes' },
+  { diaSemana: 2, nombre: 'Martes' },
+  { diaSemana: 3, nombre: 'Miércoles' },
+  { diaSemana: 4, nombre: 'Jueves' },
+  { diaSemana: 5, nombre: 'Viernes' },
+  { diaSemana: 6, nombre: 'Sábado' },
+  { diaSemana: 0, nombre: 'Domingo' },
+] as const;
+
+type ReglaDia = {
+  diaSemana: number;
+  nombre: string;
+  horaInicio: string;
+  horaFin: string;
+  activo: boolean;
+};
+
+function horaEnPunto(valor: string, respaldo: string) {
+  const hora = Number(valor.trim().slice(0, 2));
+  if (!Number.isInteger(hora) || hora < 0 || hora > 23) return respaldo;
+  return `${String(hora).padStart(2, '0')}:00`;
+}
+
+function reglasDesde(guardadas: HorarioSemanal[]): ReglaDia[] {
+  const porDia = new Map(guardadas.map((horario) => [horario.diaSemana, horario]));
+  const hayGuardadas = guardadas.length > 0;
+  return DIAS.map((dia) => {
+    const guardada = porDia.get(dia.diaSemana);
+    if (guardada) {
+      return {
+        diaSemana: dia.diaSemana,
+        nombre: dia.nombre,
+        horaInicio: horaEnPunto(guardada.horaInicio, '09:00'),
+        horaFin: horaEnPunto(guardada.horaFin, '18:00'),
+        activo: guardada.activo,
+      };
+    }
+    const laboral = dia.diaSemana >= 1 && dia.diaSemana <= 5;
+    return {
+      diaSemana: dia.diaSemana,
+      nombre: dia.nombre,
+      horaInicio: '09:00',
+      horaFin: '18:00',
+      activo: hayGuardadas ? false : laboral,
+    };
+  });
+}
 
 export default function PerfilMedicoScreen() {
   const insets = useSafeAreaInsets();
@@ -123,6 +179,7 @@ export default function PerfilMedicoScreen() {
                 <Text style={aviso === 'Se guardó correctamente.' ? styles.ok : styles.errorCampo}>{aviso}</Text>
               ) : null}
             </View>
+            <DisponibilidadSemanal />
             {perfil.matricula ? (
               <View style={styles.dato}>
                 <View style={styles.datoTexto}>
@@ -136,6 +193,131 @@ export default function PerfilMedicoScreen() {
         </>
       ) : null}
     </ScrollView>
+  );
+}
+
+function DisponibilidadSemanal() {
+  const [dias, setDias] = useState<ReglaDia[] | null>(null);
+  const [error, setError] = useState('');
+  const [guardando, setGuardando] = useState(false);
+
+  const cargar = useCallback(async () => {
+    const resultado = await cargarDisponibilidad();
+    if ('error' in resultado) {
+      setError(resultado.error ?? 'No pudimos cargar tus horarios.');
+      setDias(null);
+      return;
+    }
+    setDias(reglasDesde(resultado.horarios));
+    setError('');
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      void cargar();
+    }, [cargar]),
+  );
+
+  function actualizar(diaSemana: number, cambio: Partial<ReglaDia>) {
+    setDias((actual) => actual?.map((dia) => (dia.diaSemana === diaSemana ? { ...dia, ...cambio } : dia)) ?? actual);
+  }
+
+  async function guardar() {
+    if (!dias || guardando) return;
+    const normalizados = dias.map((dia) => ({
+      ...dia,
+      horaInicio: horaEnPunto(dia.horaInicio, '09:00'),
+      horaFin: horaEnPunto(dia.horaFin, '18:00'),
+    }));
+    const invalido = normalizados.find((dia) => dia.activo && dia.horaInicio >= dia.horaFin);
+    if (invalido) {
+      setError(`En ${invalido.nombre} el inicio tiene que ser anterior al fin.`);
+      return;
+    }
+    setDias(normalizados);
+    setGuardando(true);
+    setError('');
+    const resultado = await guardarDisponibilidad(
+      normalizados.map((dia) => ({
+        diaSemana: dia.diaSemana,
+        horaInicio: dia.horaInicio,
+        horaFin: dia.horaFin,
+        activo: dia.activo,
+      })),
+    );
+    setGuardando(false);
+    if ('error' in resultado) {
+      setError(resultado.error ?? 'No pudimos guardar tus horarios.');
+      return;
+    }
+    Alert.alert('Disponibilidad guardada.');
+  }
+
+  return (
+    <View style={styles.disponibilidad}>
+      <Text style={styles.seccion}>Mi Disponibilidad Semanal</Text>
+      <Text style={styles.ayuda}>Marcá los días que atendés y el horario de cada uno. Los turnos se ofrecen de a una hora.</Text>
+      {dias == null && !error ? (
+        <View style={styles.carga}>
+          <EmeraldSpinner />
+        </View>
+      ) : null}
+      {dias?.map((dia) => (
+        <View key={dia.diaSemana} style={styles.dia}>
+          <View style={styles.diaFila}>
+            <Text style={styles.etiqueta}>{dia.nombre}</Text>
+            <Switch
+              accessibilityLabel={`${dia.nombre} atiende`}
+              value={dia.activo}
+              onValueChange={(activo) => actualizar(dia.diaSemana, { activo })}
+              trackColor={{ false: '#e2e8f0', true: '#5DCAA5' }}
+              thumbColor="#ffffff"
+            />
+          </View>
+          {dia.activo ? (
+            <View style={styles.horas}>
+              <View style={styles.horaCampo}>
+                <Text style={styles.horaEtiqueta}>Desde</Text>
+                <TextInput
+                  value={dia.horaInicio}
+                  onChangeText={(horaInicio) => actualizar(dia.diaSemana, { horaInicio })}
+                  onEndEditing={() => actualizar(dia.diaSemana, { horaInicio: horaEnPunto(dia.horaInicio, '09:00') })}
+                  placeholder="09:00"
+                  placeholderTextColor="#94a3b8"
+                  keyboardType="numbers-and-punctuation"
+                  maxLength={5}
+                  style={styles.horaInput}
+                />
+              </View>
+              <View style={styles.horaCampo}>
+                <Text style={styles.horaEtiqueta}>Hasta</Text>
+                <TextInput
+                  value={dia.horaFin}
+                  onChangeText={(horaFin) => actualizar(dia.diaSemana, { horaFin })}
+                  onEndEditing={() => actualizar(dia.diaSemana, { horaFin: horaEnPunto(dia.horaFin, '18:00') })}
+                  placeholder="18:00"
+                  placeholderTextColor="#94a3b8"
+                  keyboardType="numbers-and-punctuation"
+                  maxLength={5}
+                  style={styles.horaInput}
+                />
+              </View>
+            </View>
+          ) : (
+            <Text style={styles.noAtiende}>No atiende</Text>
+          )}
+        </View>
+      ))}
+      {error ? <Text style={styles.errorCampo}>{error}</Text> : null}
+      <Pressable
+        accessibilityRole="button"
+        disabled={guardando || dias == null}
+        onPress={() => void guardar()}
+        style={[styles.disponibilidadBoton, (guardando || dias == null) && styles.guardarOff]}
+      >
+        <Text style={styles.disponibilidadBotonTexto}>{guardando ? 'Guardando…' : 'Guardar Disponibilidad'}</Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -224,4 +406,30 @@ const styles = StyleSheet.create({
   ok: { marginTop: 8, color: '#2C8A6E', fontSize: 14, fontWeight: '500' },
   errorCampo: { marginTop: 8, color: '#dc2626', fontSize: 14 },
   verificada: { color: '#2563eb', fontSize: 14, fontWeight: '500' },
+  disponibilidad: { marginTop: 8, paddingTop: 8 },
+  dia: { borderBottomWidth: 1, borderBottomColor: '#f1f5f9', paddingVertical: 12 },
+  diaFila: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  horas: { flexDirection: 'row', gap: 12, marginTop: 10 },
+  horaCampo: { flex: 1 },
+  horaEtiqueta: { marginBottom: 4, color: '#64748b', fontSize: 12 },
+  horaInput: {
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: '#0f172a',
+    fontSize: 14,
+    backgroundColor: '#ffffff',
+  },
+  noAtiende: { marginTop: 6, color: '#94a3b8', fontSize: 14 },
+  disponibilidadBoton: {
+    alignSelf: 'flex-start',
+    marginTop: 14,
+    backgroundColor: '#5DCAA5',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  disponibilidadBotonTexto: { color: '#12382E', fontSize: 14, fontWeight: '600' },
 });
