@@ -173,7 +173,7 @@ export async function cargarPanelDoctor(): Promise<
   const sesion = await sesionDoctor();
   if (sesion.destino) return { destino: sesion.destino };
 
-  const metricas = await metricasDelPanel();
+  const metricas = await metricasDelPanel(sesion.userId);
   if ('error' in metricas) throw new Error(metricas.error);
 
   const [turnos, nombres, pausas] = await Promise.all([
@@ -190,9 +190,9 @@ export async function cargarPanelDoctor(): Promise<
     supabase.from('pausas_aura_doctor').select('paciente_id, ocurrido_en'),
   ]);
 
-  if (turnos.error || nombres.error || pausas.error) {
-    throw new Error('No pudimos cargar el panel.');
-  }
+  if (turnos.error) throw new Error(turnos.error.message);
+  if (nombres.error) throw new Error(nombres.error.message);
+  if (pausas.error) throw new Error(pausas.error.message);
 
   const ids = [...new Set((turnos.data ?? []).map((turno) => String(turno.paciente_id)))];
   const perfiles = ids.length
@@ -202,7 +202,7 @@ export async function cargarPanelDoctor(): Promise<
         .in('user_id', ids)
     : { data: [], error: null };
 
-  if (perfiles.error) throw new Error('No pudimos cargar el panel.');
+  if (perfiles.error) throw new Error(perfiles.error.message);
 
   const turnoIds = (turnos.data ?? []).map((turno) => String(turno.id));
   const notas = turnoIds.length
@@ -213,7 +213,7 @@ export async function cargarPanelDoctor(): Promise<
         .in('turno_id', turnoIds)
     : { data: [], error: null };
 
-  if (notas.error) throw new Error('No pudimos cargar el panel.');
+  if (notas.error) throw new Error(notas.error.message);
 
   const notaDe = new Map(
     (notas.data ?? []).map((nota) => [
@@ -287,46 +287,29 @@ export async function cargarPanelDoctor(): Promise<
   };
 }
 
-async function metricasDelPanel() {
-  const base = process.env.EXPO_PUBLIC_AURA_WEB_URL?.replace(/\/+$/, '');
-  if (!base) return { error: 'Falta EXPO_PUBLIC_AURA_WEB_URL.' };
+async function metricasDelPanel(doctorId: string) {
+  const [turnos, transacciones] = await Promise.all([
+    supabase.from('turnos').select('id, precio_base, paciente_id, estado').eq('doctor_id', doctorId),
+    supabase.from('transacciones').select('turno_id').eq('doctor_id', doctorId),
+  ]);
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  const token = session?.access_token;
-  if (!token) return { error: 'No autorizado' };
+  if (turnos.error) return { error: turnos.error.message };
+  if (transacciones.error) return { error: transacciones.error.message };
 
-  let respuesta: Response;
-  try {
-    respuesta = await fetch(`${base}/api/doctor/mobile/panel`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  } catch {
-    return { error: 'No pudimos cargar el panel.' };
-  }
+  const cobrados = new Set((transacciones.data ?? []).map((fila) => String(fila.turno_id)));
+  const facturado = (turnos.data ?? []).reduce((suma, turno) => {
+    if (!cobrados.has(String(turno.id))) return suma;
+    const precio = Number(turno.precio_base);
+    return suma + (Number.isFinite(precio) ? precio : 0);
+  }, 0);
+  const comision = Math.round(facturado * 0.12);
+  const pacientesActivos = new Set(
+    (turnos.data ?? [])
+      .filter((turno) => turno.estado === 'CONFIRMADO' || turno.estado === 'COMPLETADO')
+      .map((turno) => String(turno.paciente_id)),
+  ).size;
 
-  const cuerpo = (await respuesta.json().catch(() => null)) as {
-    error?: string;
-    bruto?: unknown;
-    comision?: unknown;
-    neto?: unknown;
-    pacientesActivos?: unknown;
-  } | null;
-
-  const bruto = numero(cuerpo?.bruto);
-  const comision = numero(cuerpo?.comision);
-  const neto = numero(cuerpo?.neto);
-  const pacientesActivos = numero(cuerpo?.pacientesActivos);
-  if (!respuesta.ok || bruto == null || comision == null || neto == null || pacientesActivos == null) {
-    return { error: cuerpo?.error || 'No pudimos cargar el panel.' };
-  }
-
-  return { bruto, comision, neto, pacientesActivos };
-}
-
-function numero(valor: unknown) {
-  return typeof valor === 'number' && Number.isFinite(valor) ? valor : null;
+  return { bruto: facturado, comision, neto: facturado - comision, pacientesActivos };
 }
 
 export async function cargarFichaPaciente(pacienteId: string): Promise<

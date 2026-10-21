@@ -31,6 +31,7 @@ export default function DoctorHomeScreen() {
   const navegacionLista = Boolean(useRootNavigationState()?.key);
   const [panel, setPanel] = useState<PanelDoctor | null>(null);
   const [error, setError] = useState('');
+  const [errorCarga, setErrorCarga] = useState('');
   const [cargando, setCargando] = useState(true);
   const [verCompletadas, setVerCompletadas] = useState(false);
   const [verCanceladas, setVerCanceladas] = useState(false);
@@ -45,8 +46,9 @@ export default function DoctorHomeScreen() {
       }
       setPanel(resultado.panel);
       setError('');
+      setErrorCarga('');
     } catch (causa) {
-      setError(causa instanceof Error ? causa.message : 'No pudimos cargar el panel.');
+      setErrorCarga(causa instanceof Error ? causa.message : 'Error desconocido');
     } finally {
       setCargando(false);
     }
@@ -134,6 +136,12 @@ export default function DoctorHomeScreen() {
       {cargando && !panel ? (
         <View style={styles.carga}>
           <EmeraldSpinner />
+        </View>
+      ) : null}
+      {errorCarga ? (
+        <View>
+          <Text style={styles.error}>No pudimos cargar el panel</Text>
+          <Text style={styles.errorDetalle}>{errorCarga}</Text>
         </View>
       ) : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -399,7 +407,8 @@ const styles = StyleSheet.create({
   kicker: { color: '#64748b', fontSize: 14, fontWeight: '500' },
   titulo: { marginTop: 4, color: '#171717', fontSize: 24, fontWeight: '600' },
   carga: { marginTop: 48, alignItems: 'center' },
-  error: { marginTop: 16, color: '#475569', fontSize: 14 },
+  error: { marginTop: 16, color: '#475569', fontSize: 14, fontWeight: '600' },
+  errorDetalle: { marginTop: 4, color: '#475569', fontSize: 14 },
   kpis: { marginTop: 20, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   kpi: { width: '48%', flexGrow: 1, backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#f1f5f9', borderRadius: 16, padding: 14 },
   kpiEtiqueta: { color: '#64748b', fontSize: 13, fontWeight: '500' },
