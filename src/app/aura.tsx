@@ -15,7 +15,10 @@ import {
 import { EmeraldSpinner } from '@/components/emerald-spinner';
 import { supabase } from '@/lib/supabase';
 
-const CHAT_URL = 'http://192.168.1.231:3000/api/chat/mobile';
+function urlDelChat() {
+  const base = process.env.EXPO_PUBLIC_AURA_WEB_URL?.replace(/\/+$/, '');
+  return base ? `${base}/api/chat/mobile` : '';
+}
 const OFERTA_TURNO = '¿querés ver si tu psicólogo/a tiene un turno disponible?';
 const AVISO_IA = 'Aura es una IA y puede cometer errores.';
 const SATURADO =
@@ -103,11 +106,14 @@ export default function AuraScreen() {
     setEscribiendo(true);
 
     try {
+      const chatUrl = urlDelChat();
+      if (!chatUrl) throw new Error('Falta EXPO_PUBLIC_AURA_WEB_URL.');
+
       const { data: sesion } = await supabase.auth.getSession();
       const token = sesion.session?.access_token;
       if (!token) throw new Error('No autorizado');
 
-      const respuesta = await fetch(CHAT_URL, {
+      const respuesta = await fetch(chatUrl, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
