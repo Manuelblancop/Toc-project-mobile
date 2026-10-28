@@ -1,6 +1,7 @@
 import { EMOJIS_ANIMO } from '@/lib/emociones';
 import { etiquetaDuracion } from '@/lib/erp';
 import { horaArgentina } from '@/lib/agenda';
+import { esperarSesionInicial } from '@/lib/sesion';
 import { supabase } from '@/lib/supabase';
 
 export const TICKET_BASE = 30000;
@@ -138,9 +139,8 @@ function idLocal() {
 }
 
 async function sesionDoctor() {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const sesion = await esperarSesionInicial();
+  const user = sesion?.user;
   if (!user) return { destino: '/login' as const };
 
   const { data, error } = await supabase
@@ -568,6 +568,20 @@ export async function guardarNotaClinica(pacienteId: string, turnoId: string, co
 
   if (error || !data?.length) return { error: 'No pudimos guardar la nota.' };
   return { ok: true as const, notaId: String(data[0]?.id ?? notaId) };
+}
+
+export async function registrarPresencia() {
+  const base = process.env.EXPO_PUBLIC_AURA_WEB_URL?.replace(/\/+$/, '');
+  if (!base) return;
+
+  const sesion = await esperarSesionInicial();
+  const token = sesion?.access_token;
+  if (!token) return;
+
+  await fetch(`${base}/api/doctor/mobile/presencia`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  }).catch(() => undefined);
 }
 
 export async function rehabilitarChat(pacienteId: string) {

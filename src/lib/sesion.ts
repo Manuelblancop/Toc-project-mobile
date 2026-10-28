@@ -1,7 +1,24 @@
-import type { User } from '@supabase/supabase-js';
+import type { Session, User } from '@supabase/supabase-js';
 import { router } from 'expo-router';
 
 import { supabase } from '@/lib/supabase';
+
+const RUTAS_PUBLICAS = ['/', '/login', '/registro'];
+
+let sesionInicial: Promise<Session | null> | null = null;
+
+export function esperarSesionInicial() {
+  if (!sesionInicial) {
+    sesionInicial = supabase.auth.getSession().then(({ data }) => data.session ?? null);
+  }
+  return sesionInicial;
+}
+
+export function esRutaPublica(pathname: string) {
+  return RUTAS_PUBLICAS.some(
+    (ruta) => pathname === ruta || (ruta !== '/' && pathname.startsWith(`${ruta}/`)),
+  );
+}
 
 export type DestinoAuth = '/home' | '/doctor' | '/doctor/pendiente';
 
@@ -62,5 +79,5 @@ export function mensajeDeRegistro(mensaje: string) {
 
 export async function cerrarSesion() {
   await supabase.auth.signOut();
-  router.replace('/login');
+  router.replace('/');
 }

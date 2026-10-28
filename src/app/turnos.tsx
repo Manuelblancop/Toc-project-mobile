@@ -194,7 +194,7 @@ export default function TurnosScreen() {
                 </View>
               </View>
               <Text style={styles.matricula}>Mat. {doctor.matricula}</Text>
-              <Text style={styles.enLinea}>En línea</Text>
+              {doctor.enLinea ? <Text style={styles.enLinea}>En línea</Text> : null}
 
               {doctor.dias.length === 0 ? (
                 <Text style={styles.sinHorarios}>Sin horarios en los próximos 30 días.</Text>
@@ -358,7 +358,18 @@ const styles = StyleSheet.create({
   nuevo: { color: '#7a7f94', fontSize: 14 },
   estrellas: { color: '#3d6b52', fontSize: 14 },
   matricula: { marginTop: 8, color: '#7a7f94', fontSize: 12 },
-  enLinea: { color: '#3a3d4a', fontSize: 14 },
+  enLinea: {
+    alignSelf: 'flex-start',
+    marginTop: 8,
+    overflow: 'hidden',
+    borderRadius: 999,
+    backgroundColor: '#ecfdf5',
+    color: '#064e3b',
+    fontSize: 12,
+    fontWeight: '600',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
   diaBloque: { marginTop: 12 },
   dia: { marginBottom: 8, color: '#64748b', fontSize: 12, fontWeight: '500' },
   sinHorarios: { marginTop: 12, textAlign: 'center', color: '#94a3b8', fontSize: 14 },

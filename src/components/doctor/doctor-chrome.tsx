@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { registrarPresencia } from '@/lib/doctor';
 import { cerrarSesion } from '@/lib/sesion';
 
 export function DoctorChrome({ children }: { children: ReactNode }) {
@@ -14,6 +15,11 @@ export function DoctorChrome({ children }: { children: ReactNode }) {
   useEffect(() => {
     setMenuAbierto(false);
   }, [pathname]);
+
+  useEffect(() => {
+    if (esPendiente) return;
+    void registrarPresencia();
+  }, [esPendiente, pathname]);
 
   if (esPendiente) {
     return <View style={styles.screen}>{children}</View>;

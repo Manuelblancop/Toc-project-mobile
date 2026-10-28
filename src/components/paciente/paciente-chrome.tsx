@@ -23,9 +23,11 @@ function esRutaPaciente(pathname: string) {
 export function PacienteChrome({
   children,
   navegacionLista,
+  sesionLista,
 }: {
   children: ReactNode;
   navegacionLista: boolean;
+  sesionLista: boolean;
 }) {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
@@ -35,7 +37,7 @@ export function PacienteChrome({
   const [menuAbierto, setMenuAbierto] = useState(false);
 
   useEffect(() => {
-    if (!navegacionLista) return;
+    if (!navegacionLista || !sesionLista) return;
 
     if (!esPaciente) {
       autorizado.current = false;
@@ -50,8 +52,9 @@ export function PacienteChrome({
 
     void (async () => {
       const {
-        data: { user },
-      } = await supabase.auth.getUser();
+        data: { session },
+      } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!activo) return;
       if (!user) {
         router.replace('/login');
@@ -76,7 +79,7 @@ export function PacienteChrome({
     return () => {
       activo = false;
     };
-  }, [esPaciente, navegacionLista]);
+  }, [esPaciente, navegacionLista, sesionLista]);
 
   return (
     <View style={styles.screen}>

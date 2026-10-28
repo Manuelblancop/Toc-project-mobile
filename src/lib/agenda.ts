@@ -44,6 +44,7 @@ export type DoctorAgenda = {
   matricula: string;
   rating: number;
   especialidad: string;
+  enLinea: boolean;
   dias: DiaDisponible[];
 };
 
@@ -92,6 +93,7 @@ export async function cargarAgenda(): Promise<{ doctores: DoctorAgenda[]; puntos
             typeof doctor.especialidad === 'string' && doctor.especialidad.trim()
               ? doctor.especialidad
               : 'Psicólogo/a clínico/a',
+          enLinea: doctor.enLinea === true,
           dias,
         },
       ];
