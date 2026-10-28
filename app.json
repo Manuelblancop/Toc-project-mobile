@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "aura-mobile",
-    "slug": "aura-mobile",
+    "name": "Toc Project",
+    "slug": "toc-project",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",

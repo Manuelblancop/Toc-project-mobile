@@ -9,6 +9,7 @@ import {
   cargarFichaPaciente,
   csvDeHistorial,
   guardarNotaClinica,
+  guardarNotaDePaciente,
   nombreCsv,
   rehabilitarChat,
   asignarEjercicioPaciente,
@@ -82,7 +83,9 @@ export default function FichaPacienteScreen() {
     if (!ficha || guardando) return;
     setGuardando(true);
     setAviso('');
-    const resultado = await guardarNotaClinica(pacienteId, turnoId, texto);
+    const resultado = turnoId
+      ? await guardarNotaClinica(pacienteId, turnoId, texto)
+      : await guardarNotaDePaciente(pacienteId, texto);
     setGuardando(false);
     if ('error' in resultado) {
       setAviso(resultado.error ?? 'No pudimos guardar la nota.');
@@ -194,51 +197,47 @@ export default function FichaPacienteScreen() {
             <View style={styles.card}>
               <Text style={styles.cardKicker}>Notas clínicas</Text>
               <Text style={styles.cardTitulo}>Observaciones</Text>
-              {ficha.turnos.length === 0 ? (
-                <Text style={styles.vacio}>No hay un turno asociado para guardar la nota</Text>
-              ) : (
-                <>
-                  <View style={styles.turnos}>
-                    {ficha.turnos.map((turno) => {
-                      const activo = turno.id === turnoId;
-                      return (
-                        <Pressable
-                          key={turno.id}
-                          accessibilityRole="button"
-                          onPress={() => {
-                            turnoElegido.current = turno.id;
-                            setTurnoId(turno.id);
-                            const previa = ficha.notas.find((nota) => nota.turnoId === turno.id);
-                            setTexto(previa?.contenido ?? '');
-                          }}
-                          style={[styles.chip, activo && styles.chipActivo]}
-                        >
-                          <Text style={[styles.chipTexto, activo && styles.chipTextoActivo]}>{turno.etiqueta}</Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                  <TextInput
-                    value={texto}
-                    onChangeText={setTexto}
-                    editable={!guardando}
-                    multiline
-                    placeholder="Escribí una observación clínica..."
-                    placeholderTextColor="#64748b"
-                    style={styles.input}
-                  />
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={guardando || !texto.trim()}
-                    onPress={() => void guardar()}
-                    style={[styles.guardar, (guardando || !texto.trim()) && styles.guardarOff]}
-                  >
-                    <Text style={styles.guardarTexto}>
-                      {guardando ? 'Guardando...' : notaActual ? 'Actualizar nota' : 'Guardar nota'}
-                    </Text>
-                  </Pressable>
-                </>
-              )}
+              {ficha.turnos.length > 0 ? (
+                <View style={styles.turnos}>
+                  {ficha.turnos.map((turno) => {
+                    const activo = turno.id === turnoId;
+                    return (
+                      <Pressable
+                        key={turno.id}
+                        accessibilityRole="button"
+                        onPress={() => {
+                          turnoElegido.current = turno.id;
+                          setTurnoId(turno.id);
+                          const previa = ficha.notas.find((nota) => nota.turnoId === turno.id);
+                          setTexto(previa?.contenido ?? '');
+                        }}
+                        style={[styles.chip, activo && styles.chipActivo]}
+                      >
+                        <Text style={[styles.chipTexto, activo && styles.chipTextoActivo]}>{turno.etiqueta}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
+              <TextInput
+                value={texto}
+                onChangeText={setTexto}
+                editable={!guardando}
+                multiline
+                placeholder="Escribí una observación clínica..."
+                placeholderTextColor="#64748b"
+                style={styles.input}
+              />
+              <Pressable
+                accessibilityRole="button"
+                disabled={guardando || !texto.trim()}
+                onPress={() => void guardar()}
+                style={[styles.guardar, (guardando || !texto.trim()) && styles.guardarOff]}
+              >
+                <Text style={styles.guardarTexto}>
+                  {guardando ? 'Guardando...' : notaActual ? 'Actualizar nota' : 'Guardar nota'}
+                </Text>
+              </Pressable>
               <View style={styles.listaNotas}>
                 {ficha.notas.length === 0 ? (
                   <Text style={styles.vacio}>Todavía no hay notas para este paciente.</Text>

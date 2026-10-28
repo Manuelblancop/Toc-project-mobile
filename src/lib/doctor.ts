@@ -420,7 +420,7 @@ export async function cargarFichaPaciente(pacienteId: string): Promise<
       }),
       notas: (notas.data ?? []).map((nota) => ({
         id: String(nota.id),
-        turnoId: String(nota.turno_id),
+        turnoId: nota.turno_id ? String(nota.turno_id) : '',
         contenido: String(nota.contenido ?? ''),
         fecha: fechaCorta(nota.fecha_creacion as string | null),
       })),
@@ -495,6 +495,30 @@ export async function cargarNotaDeSala(
     pacienteId: String(turno.data.paciente_id),
     contenido: nota.data?.contenido ?? '',
   };
+}
+
+export async function guardarNotaDePaciente(pacienteId: string, contenido: string) {
+  const texto = contenido.trim();
+  if (!texto) return { error: 'La nota no puede estar vacía' };
+  if (!pacienteId) return { error: 'El paciente no es válido' };
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: 'No autorizado' };
+
+  const { data, error } = await supabase
+    .from('notas_clinicas')
+    .insert({
+      id: idLocal(),
+      contenido: texto,
+      doctor_id: user.id,
+      paciente_id: pacienteId,
+    })
+    .select('id');
+
+  if (error || !data?.length) return { error: 'No pudimos guardar la nota.' };
+  return { ok: true as const, notaId: String(data[0]?.id) };
 }
 
 export async function guardarNotaClinica(pacienteId: string, turnoId: string, contenido: string) {

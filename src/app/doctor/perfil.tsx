@@ -23,12 +23,17 @@ const DIAS = [
   { diaSemana: 0, nombre: 'Domingo' },
 ] as const;
 
+type Bloque = {
+  id: string;
+  horaInicio: string;
+  horaFin: string;
+};
+
 type ReglaDia = {
   diaSemana: number;
   nombre: string;
-  horaInicio: string;
-  horaFin: string;
   activo: boolean;
+  bloques: Bloque[];
 };
 
 function horaEnPunto(valor: string, respaldo: string) {
@@ -37,27 +42,47 @@ function horaEnPunto(valor: string, respaldo: string) {
   return `${String(hora).padStart(2, '0')}:00`;
 }
 
+function minutosDe(hora: string) {
+  const [hh, mm] = hora.split(':');
+  return Number(hh) * 60 + Number(mm);
+}
+
+function seSolapan(inicioA: number, finA: number, inicioB: number, finB: number) {
+  return inicioA < finB && inicioB < finA;
+}
+
+function bloqueDe(diaSemana: number, indice: number, horaInicio = '09:00', horaFin = '18:00'): Bloque {
+  return {
+    id: `${diaSemana}-${indice}-${horaInicio}-${horaFin}`,
+    horaInicio: horaEnPunto(horaInicio, '09:00'),
+    horaFin: horaEnPunto(horaFin, '18:00'),
+  };
+}
+
 function reglasDesde(guardadas: HorarioSemanal[]): ReglaDia[] {
-  const porDia = new Map(guardadas.map((horario) => [horario.diaSemana, horario]));
+  const porDia = new Map<number, HorarioSemanal[]>();
+  for (const horario of guardadas) {
+    const lista = porDia.get(horario.diaSemana) ?? [];
+    lista.push(horario);
+    porDia.set(horario.diaSemana, lista);
+  }
   const hayGuardadas = guardadas.length > 0;
   return DIAS.map((dia) => {
-    const guardada = porDia.get(dia.diaSemana);
-    if (guardada) {
+    const filas = porDia.get(dia.diaSemana) ?? [];
+    if (filas.length > 0) {
       return {
         diaSemana: dia.diaSemana,
         nombre: dia.nombre,
-        horaInicio: horaEnPunto(guardada.horaInicio, '09:00'),
-        horaFin: horaEnPunto(guardada.horaFin, '18:00'),
-        activo: guardada.activo,
+        activo: filas.some((fila) => fila.activo),
+        bloques: filas.map((fila, indice) => bloqueDe(dia.diaSemana, indice, fila.horaInicio, fila.horaFin)),
       };
     }
     const laboral = dia.diaSemana >= 1 && dia.diaSemana <= 5;
     return {
       diaSemana: dia.diaSemana,
       nombre: dia.nombre,
-      horaInicio: '09:00',
-      horaFin: '18:00',
       activo: hayGuardadas ? false : laboral,
+      bloques: [bloqueDe(dia.diaSemana, 0)],
     };
   });
 }
@@ -200,6 +225,7 @@ function DisponibilidadSemanal() {
   const [dias, setDias] = useState<ReglaDia[] | null>(null);
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
+  const [secuencia, setSecuencia] = useState(0);
 
   const cargar = useCallback(async () => {
     const resultado = await cargarDisponibilidad();
@@ -218,32 +244,108 @@ function DisponibilidadSemanal() {
     }, [cargar]),
   );
 
-  function actualizar(diaSemana: number, cambio: Partial<ReglaDia>) {
-    setDias((actual) => actual?.map((dia) => (dia.diaSemana === diaSemana ? { ...dia, ...cambio } : dia)) ?? actual);
+  function actualizarDia(diaSemana: number, activo: boolean) {
+    setDias((actual) => actual?.map((dia) => (dia.diaSemana === diaSemana ? { ...dia, activo } : dia)) ?? actual);
+  }
+
+  function actualizarBloque(diaSemana: number, bloqueId: string, cambio: Partial<Pick<Bloque, 'horaInicio' | 'horaFin'>>) {
+    setDias(
+      (actual) =>
+        actual?.map((dia) =>
+          dia.diaSemana === diaSemana
+            ? { ...dia, bloques: dia.bloques.map((item) => (item.id === bloqueId ? { ...item, ...cambio } : item)) }
+            : dia,
+        ) ?? actual,
+    );
+  }
+
+  function normalizarBloque(diaSemana: number, bloqueId: string, campo: 'horaInicio' | 'horaFin', respaldo: string) {
+    setDias(
+      (actual) =>
+        actual?.map((dia) => {
+          if (dia.diaSemana !== diaSemana) return dia;
+          return {
+            ...dia,
+            bloques: dia.bloques.map((item) =>
+              item.id === bloqueId ? { ...item, [campo]: horaEnPunto(item[campo], respaldo) } : item,
+            ),
+          };
+        }) ?? actual,
+    );
+  }
+
+  function agregarBloque(diaSemana: number) {
+    const id = `${diaSemana}-extra-${secuencia}`;
+    setSecuencia((actual) => actual + 1);
+    setDias(
+      (actual) =>
+        actual?.map((dia) => {
+          if (dia.diaSemana !== diaSemana) return dia;
+          const ultimo = dia.bloques[dia.bloques.length - 1];
+          const horaInicio = ultimo && ultimo.horaFin < '23:00' ? ultimo.horaFin : '14:00';
+          const horaFin = horaInicio < '20:00' ? '20:00' : '23:00';
+          return { ...dia, activo: true, bloques: [...dia.bloques, { id, horaInicio, horaFin }] };
+        }) ?? actual,
+    );
+  }
+
+  function quitarBloque(diaSemana: number, bloqueId: string) {
+    setDias(
+      (actual) =>
+        actual?.map((dia) => {
+          if (dia.diaSemana !== diaSemana || dia.bloques.length < 2) return dia;
+          return { ...dia, bloques: dia.bloques.filter((item) => item.id !== bloqueId) };
+        }) ?? actual,
+    );
   }
 
   async function guardar() {
     if (!dias || guardando) return;
     const normalizados = dias.map((dia) => ({
       ...dia,
-      horaInicio: horaEnPunto(dia.horaInicio, '09:00'),
-      horaFin: horaEnPunto(dia.horaFin, '18:00'),
+      bloques: dia.bloques.map((item) => ({
+        ...item,
+        horaInicio: horaEnPunto(item.horaInicio, '09:00'),
+        horaFin: horaEnPunto(item.horaFin, '18:00'),
+      })),
     }));
-    const invalido = normalizados.find((dia) => dia.activo && dia.horaInicio >= dia.horaFin);
-    if (invalido) {
-      setError(`En ${invalido.nombre} el inicio tiene que ser anterior al fin.`);
-      return;
+    for (const dia of normalizados) {
+      if (!dia.activo) continue;
+      for (const item of dia.bloques) {
+        if (item.horaInicio >= item.horaFin) {
+          setError(`En ${dia.nombre} el inicio tiene que ser anterior al fin.`);
+          return;
+        }
+      }
+      const ordenados = [...dia.bloques].sort((a, b) => minutosDe(a.horaInicio) - minutosDe(b.horaInicio));
+      for (let i = 1; i < ordenados.length; i++) {
+        const previa = ordenados[i - 1];
+        const actual = ordenados[i];
+        if (
+          seSolapan(
+            minutosDe(previa.horaInicio),
+            minutosDe(previa.horaFin),
+            minutosDe(actual.horaInicio),
+            minutosDe(actual.horaFin),
+          )
+        ) {
+          setError(`En ${dia.nombre} hay dos horarios que se pisan. Dejá un hueco entre bloques.`);
+          return;
+        }
+      }
     }
     setDias(normalizados);
     setGuardando(true);
     setError('');
     const resultado = await guardarDisponibilidad(
-      normalizados.map((dia) => ({
-        diaSemana: dia.diaSemana,
-        horaInicio: dia.horaInicio,
-        horaFin: dia.horaFin,
-        activo: dia.activo,
-      })),
+      normalizados.flatMap((dia) =>
+        dia.bloques.map((item) => ({
+          diaSemana: dia.diaSemana,
+          horaInicio: item.horaInicio,
+          horaFin: item.horaFin,
+          activo: dia.activo,
+        })),
+      ),
     );
     setGuardando(false);
     if ('error' in resultado) {
@@ -256,7 +358,9 @@ function DisponibilidadSemanal() {
   return (
     <View style={styles.disponibilidad}>
       <Text style={styles.seccion}>Mi Disponibilidad Semanal</Text>
-      <Text style={styles.ayuda}>Marcá los días que atendés y el horario de cada uno. Los turnos se ofrecen de a una hora.</Text>
+      <Text style={styles.ayuda}>
+        Marcá los días que atendés. Con + podés sumar otro horario el mismo día. Los turnos se ofrecen de a una hora.
+      </Text>
       {dias == null && !error ? (
         <View style={styles.carga}>
           <EmeraldSpinner />
@@ -266,43 +370,67 @@ function DisponibilidadSemanal() {
         <View key={dia.diaSemana} style={styles.dia}>
           <View style={styles.diaFila}>
             <Text style={styles.etiqueta}>{dia.nombre}</Text>
-            <Switch
-              accessibilityLabel={`${dia.nombre} atiende`}
-              value={dia.activo}
-              onValueChange={(activo) => actualizar(dia.diaSemana, { activo })}
-              trackColor={{ false: '#e2e8f0', true: '#5DCAA5' }}
-              thumbColor="#ffffff"
-            />
+            <View style={styles.diaAcciones}>
+              {dia.activo ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Agregar horario el ${dia.nombre}`}
+                  onPress={() => agregarBloque(dia.diaSemana)}
+                  style={styles.mas}
+                >
+                  <Text style={styles.masTexto}>+</Text>
+                </Pressable>
+              ) : null}
+              <Switch
+                accessibilityLabel={`${dia.nombre} atiende`}
+                value={dia.activo}
+                onValueChange={(activo) => actualizarDia(dia.diaSemana, activo)}
+                trackColor={{ false: '#e2e8f0', true: '#5DCAA5' }}
+                thumbColor="#ffffff"
+              />
+            </View>
           </View>
           {dia.activo ? (
-            <View style={styles.horas}>
-              <View style={styles.horaCampo}>
-                <Text style={styles.horaEtiqueta}>Desde</Text>
-                <TextInput
-                  value={dia.horaInicio}
-                  onChangeText={(horaInicio) => actualizar(dia.diaSemana, { horaInicio })}
-                  onEndEditing={() => actualizar(dia.diaSemana, { horaInicio: horaEnPunto(dia.horaInicio, '09:00') })}
-                  placeholder="09:00"
-                  placeholderTextColor="#94a3b8"
-                  keyboardType="numbers-and-punctuation"
-                  maxLength={5}
-                  style={styles.horaInput}
-                />
+            dia.bloques.map((item, indice) => (
+              <View key={item.id} style={styles.horas}>
+                <View style={styles.horaCampo}>
+                  <Text style={styles.horaEtiqueta}>Desde</Text>
+                  <TextInput
+                    value={item.horaInicio}
+                    onChangeText={(horaInicio) => actualizarBloque(dia.diaSemana, item.id, { horaInicio })}
+                    onEndEditing={() => normalizarBloque(dia.diaSemana, item.id, 'horaInicio', '09:00')}
+                    placeholder="09:00"
+                    placeholderTextColor="#94a3b8"
+                    keyboardType="numbers-and-punctuation"
+                    maxLength={5}
+                    style={styles.horaInput}
+                  />
+                </View>
+                <View style={styles.horaCampo}>
+                  <Text style={styles.horaEtiqueta}>Hasta</Text>
+                  <TextInput
+                    value={item.horaFin}
+                    onChangeText={(horaFin) => actualizarBloque(dia.diaSemana, item.id, { horaFin })}
+                    onEndEditing={() => normalizarBloque(dia.diaSemana, item.id, 'horaFin', '18:00')}
+                    placeholder="18:00"
+                    placeholderTextColor="#94a3b8"
+                    keyboardType="numbers-and-punctuation"
+                    maxLength={5}
+                    style={styles.horaInput}
+                  />
+                </View>
+                {dia.bloques.length > 1 ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Quitar horario ${indice + 1} de ${dia.nombre}`}
+                    onPress={() => quitarBloque(dia.diaSemana, item.id)}
+                    style={styles.quitar}
+                  >
+                    <Text style={styles.quitarTexto}>Quitar</Text>
+                  </Pressable>
+                ) : null}
               </View>
-              <View style={styles.horaCampo}>
-                <Text style={styles.horaEtiqueta}>Hasta</Text>
-                <TextInput
-                  value={dia.horaFin}
-                  onChangeText={(horaFin) => actualizar(dia.diaSemana, { horaFin })}
-                  onEndEditing={() => actualizar(dia.diaSemana, { horaFin: horaEnPunto(dia.horaFin, '18:00') })}
-                  placeholder="18:00"
-                  placeholderTextColor="#94a3b8"
-                  keyboardType="numbers-and-punctuation"
-                  maxLength={5}
-                  style={styles.horaInput}
-                />
-              </View>
-            </View>
+            ))
           ) : (
             <Text style={styles.noAtiende}>No atiende</Text>
           )}
@@ -409,7 +537,19 @@ const styles = StyleSheet.create({
   disponibilidad: { marginTop: 8, paddingTop: 8 },
   dia: { borderBottomWidth: 1, borderBottomColor: '#f1f5f9', paddingVertical: 12 },
   diaFila: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  horas: { flexDirection: 'row', gap: 12, marginTop: 10 },
+  diaAcciones: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  mas: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#064e3b',
+  },
+  masTexto: { color: '#ffffff', fontSize: 20, fontWeight: '600', lineHeight: 22 },
+  quitar: { alignSelf: 'flex-end', paddingBottom: 10 },
+  quitarTexto: { color: '#64748b', fontSize: 13 },
+  horas: { flexDirection: 'row', alignItems: 'flex-end', gap: 12, marginTop: 10 },
   horaCampo: { flex: 1 },
   horaEtiqueta: { marginBottom: 4, color: '#64748b', fontSize: 12 },
   horaInput: {
