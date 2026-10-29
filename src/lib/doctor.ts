@@ -1,4 +1,4 @@
-import { EMOJIS_ANIMO } from '@/lib/emociones';
+import { EMOJIS_ANIMO, puntoDeCheckin, type PuntoEvolucionEmocional } from '@/lib/emociones';
 import { etiquetaDuracion } from '@/lib/erp';
 import { horaArgentina } from '@/lib/agenda';
 import { esperarSesionInicial } from '@/lib/sesion';
@@ -61,6 +61,13 @@ export type EmocionFicha = {
   fecha: string;
 };
 
+export type SesionFicha = {
+  id: string;
+  nombre: string;
+  fecha: string;
+  ansiedad: number;
+};
+
 export type NotaFicha = {
   id: string;
   turnoId: string;
@@ -87,6 +94,8 @@ export type FichaPaciente = {
   pausa: PausaAura | null;
   ejercicios: EjercicioFicha[];
   emociones: EmocionFicha[];
+  puntos: PuntoEvolucionEmocional[];
+  sesiones: SesionFicha[];
   notas: NotaFicha[];
   turnos: TurnoNota[];
   filasCsv: FilaCsv[];
@@ -318,7 +327,7 @@ export async function cargarFichaPaciente(pacienteId: string): Promise<
   const sesion = await sesionDoctor();
   if (sesion.destino) return { destino: sesion.destino };
 
-  const [perfil, pausa, ejercicios, emociones, notas, turnos] = await Promise.all([
+  const [perfil, pausa, ejercicios, emociones, notas, turnos, sesiones] = await Promise.all([
     supabase
       .from('perfil_paciente')
       .select('user_id, alerta_crisis, triage_actual')
@@ -348,6 +357,11 @@ export async function cargarFichaPaciente(pacienteId: string): Promise<
       .eq('doctor_id', sesion.userId)
       .eq('paciente_id', pacienteId)
       .order('fecha_hora', { ascending: false }),
+    supabase
+      .from('historial_sesiones')
+      .select('id, ansiedad_nivel, completado_at, ejercicios_erp(nombre)')
+      .eq('paciente_id', pacienteId)
+      .order('completado_at', { ascending: false }),
   ]);
 
   if (perfil.error || ejercicios.error || emociones.error || notas.error || turnos.error) {
@@ -418,6 +432,32 @@ export async function cargarFichaPaciente(pacienteId: string): Promise<
           fecha: fechaCorta(String(fila.fecha)),
         };
       }),
+      puntos: (emociones.data ?? [])
+        .slice(0, 100)
+        .slice()
+        .reverse()
+        .flatMap((fila) => {
+          const punto = puntoDeCheckin({ fecha: String(fila.fecha ?? ''), emoji: String(fila.emoji ?? '') });
+          return punto ? [punto] : [];
+        }),
+      sesiones: sesiones.error
+        ? []
+        : (sesiones.data ?? []).map((fila) => {
+            const crudo = fila as {
+              id: string;
+              ansiedad_nivel: number | null;
+              completado_at: string;
+              ejercicios_erp: { nombre?: string } | { nombre?: string }[] | null;
+            };
+            const relacion = crudo.ejercicios_erp;
+            const nombreEjercicio = Array.isArray(relacion) ? relacion[0]?.nombre : relacion?.nombre;
+            return {
+              id: String(crudo.id),
+              nombre: nombreEjercicio || 'Ejercicio ERP',
+              fecha: fechaCorta(crudo.completado_at),
+              ansiedad: Number(crudo.ansiedad_nivel) || 0,
+            };
+          }),
       notas: (notas.data ?? []).map((nota) => ({
         id: String(nota.id),
         turnoId: nota.turno_id ? String(nota.turno_id) : '',

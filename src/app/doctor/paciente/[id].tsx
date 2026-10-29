@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AvisoPausaAura } from '@/components/doctor/aviso-pausa';
 import { EmeraldSpinner } from '@/components/emerald-spinner';
+import { GraficoEvolucion } from '@/components/paciente/grafico-evolucion';
 import {
   cargarFichaPaciente,
   csvDeHistorial,
@@ -16,9 +17,6 @@ import {
   eliminarEjercicioAsignado,
   type FichaPaciente,
 } from '@/lib/doctor';
-
-const TABS = ['ERP', 'Emociones', 'Notas'] as const;
-type Tab = (typeof TABS)[number];
 
 const DIFICULTAD = {
   Fácil: { fondo: '#E7F6F0', texto: '#2C8A6E' },
@@ -32,7 +30,6 @@ export default function FichaPacienteScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const pacienteId = typeof id === 'string' ? id : '';
   const [ficha, setFicha] = useState<FichaPaciente | null>(null);
-  const [tab, setTab] = useState<Tab>('ERP');
   const [turnoId, setTurnoId] = useState('');
   const [texto, setTexto] = useState('');
   const [error, setError] = useState('');
@@ -129,15 +126,17 @@ export default function FichaPacienteScreen() {
       <Pressable accessibilityRole="button" onPress={() => router.push('/doctor')} style={styles.volver}>
         <Text style={styles.volverTexto}>← Panel</Text>
       </Pressable>
-      <Text style={styles.kicker}>Historia clínica</Text>
-      <View style={styles.tituloFila}>
-        <Text style={styles.titulo}>{ficha?.nombre ?? 'Paciente'}</Text>
-        {ficha && ficha.filasCsv.length > 0 ? (
-          <Pressable accessibilityRole="button" onPress={() => void exportar()} style={styles.csv}>
-            <Text style={styles.csvTexto}>Exportar Historial (CSV)</Text>
-          </Pressable>
-        ) : null}
+      <View style={styles.header}>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarTexto}>{(ficha?.nombre ?? 'P').trim().charAt(0).toUpperCase() || 'P'}</Text>
+        </View>
+        <Text style={styles.headerTitulo}>Historia clínica de paciente {ficha?.nombre ?? 'Paciente'}</Text>
       </View>
+      {ficha && ficha.filasCsv.length > 0 ? (
+        <Pressable accessibilityRole="button" onPress={() => void exportar()} style={styles.csv}>
+          <Text style={styles.csvTexto}>Exportar Historial (CSV)</Text>
+        </Pressable>
+      ) : null}
 
       {cargando && !ficha ? (
         <View style={styles.carga}>
@@ -164,39 +163,44 @@ export default function FichaPacienteScreen() {
         </View>
       ) : null}
 
-      {ficha?.triage ? (
-        <View style={styles.triage}>
-          <Text style={styles.triageTitulo}>Motivo de consulta / Triage</Text>
-          <Text style={styles.triageTexto}>{ficha.triage}</Text>
-        </View>
-      ) : null}
-
       {ficha ? (
         <>
-          <View style={styles.tabs}>
-            {TABS.map((item) => {
-              const activo = tab === item;
-              return (
-                <Pressable
-                  key={item}
-                  accessibilityRole="button"
-                  onPress={() => setTab(item)}
-                  style={[styles.tab, activo && styles.tabActivo]}
-                >
-                  <Text style={[styles.tabTexto, activo && styles.tabTextoActivo]}>{item}</Text>
-                </Pressable>
-              );
-            })}
+          <View style={styles.card}>
+            <Text style={styles.cardTitulo}>Contexto</Text>
+            <View style={styles.triage}>
+              <Text style={styles.triageTitulo}>Motivo de consulta / Triage</Text>
+              <Text style={styles.triageTexto}>
+                {ficha.triage?.trim() || 'El paciente todavía no escribió un motivo de consulta.'}
+              </Text>
+            </View>
+            <Text style={styles.subtitulo}>Evolución emocional</Text>
+            <GraficoEvolucion datos={ficha.puntos} />
           </View>
 
-          {tab === 'ERP' ? (
-            <SeccionErp ficha={ficha} pacienteId={pacienteId} onAsignado={cargar} onEliminado={quitarEjercicio} />
-          ) : null}
-          {tab === 'Emociones' ? <SeccionEmociones ficha={ficha} /> : null}
-          {tab === 'Notas' ? (
-            <View style={styles.card}>
-              <Text style={styles.cardKicker}>Notas clínicas</Text>
-              <Text style={styles.cardTitulo}>Observaciones</Text>
+          <View style={styles.card}>
+            <Text style={styles.cardTitulo}>Historia clínica</Text>
+            <Text style={styles.subtitulo}>Sesiones ERP</Text>
+            {ficha.sesiones.length === 0 ? (
+              <Text style={styles.vacio}>Este paciente todavía no tiene sesiones ERP registradas.</Text>
+            ) : (
+              <View style={styles.lista}>
+                {ficha.sesiones.map((sesion) => {
+                  const alerta = sesion.ansiedad >= 4;
+                  return (
+                    <View key={sesion.id} style={[styles.sesion, alerta ? styles.sesionAlta : styles.sesionNormal]}>
+                      <View style={styles.turnoTexto}>
+                        <Text style={styles.nombre}>{sesion.nombre}</Text>
+                        <Text style={styles.consulta}>{sesion.fecha}</Text>
+                        {alerta ? <Text style={styles.ansiedadAviso}>Ansiedad alta</Text> : null}
+                      </View>
+                      <Text style={[styles.ansiedad, alerta && styles.ansiedadNumeroAlta]}>{sesion.ansiedad}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
+            <Text style={styles.subtitulo}>Notas clínicas</Text>
               {ficha.turnos.length > 0 ? (
                 <View style={styles.turnos}>
                   {ficha.turnos.map((turno) => {
@@ -250,8 +254,16 @@ export default function FichaPacienteScreen() {
                   ))
                 )}
               </View>
-            </View>
-          ) : null}
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.gestion}>Gestión</Text>
+            <Text style={styles.cardTitulo}>Asignación de Ejercicios ERP</Text>
+            <Text style={styles.cuerpo}>
+              Panel para recetar y seguir ejercicios. No forma parte de la historia clínica.
+            </Text>
+            <SeccionErp ficha={ficha} pacienteId={pacienteId} onAsignado={cargar} onEliminado={quitarEjercicio} />
+          </View>
         </>
       ) : null}
     </ScrollView>
@@ -385,7 +397,7 @@ function FormularioAsignar({
 
   return (
     <View style={styles.card}>
-      <Text style={styles.cardTitulo}>Ejercicio ERP asignado</Text>
+      <Text style={styles.cardTitulo}>Nuevo ejercicio</Text>
       <Text style={styles.cuerpo}>
         Recetá una exposición para un día y una dificultad. Cuando el paciente la cierre, vas a ver su ansiedad y su comentario.
       </Text>
@@ -459,38 +471,32 @@ function FormularioAsignar({
   );
 }
 
-function SeccionEmociones({ ficha }: { ficha: FichaPaciente }) {
-  if (ficha.emociones.length === 0) {
-    return (
-      <View style={styles.card}>
-        <Text style={styles.vacio}>Este paciente todavía no registró su estado de ánimo.</Text>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.lista}>
-      {ficha.emociones.map((emocion) => (
-        <View key={emocion.id} style={styles.emocion}>
-          <Text style={styles.emoji}>{emocion.emoji}</Text>
-          <View style={styles.turnoTexto}>
-            <Text style={styles.nombre}>{emocion.etiqueta}</Text>
-            <Text style={styles.consulta}>{emocion.fecha}</Text>
-          </View>
-        </View>
-      ))}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#f8fafc' },
   volver: { alignSelf: 'flex-start', marginBottom: 8 },
   volverTexto: { color: '#64748b', fontSize: 14, fontWeight: '500' },
-  kicker: { color: '#64748b', fontSize: 14, fontWeight: '500' },
-  tituloFila: { marginTop: 4, gap: 12 },
-  titulo: { color: '#0f172a', fontSize: 28, fontWeight: '600' },
-  csv: { alignSelf: 'flex-start', backgroundColor: '#5DCAA5', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
+  header: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+    borderRadius: 16,
+    padding: 16,
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#064e3b',
+  },
+  avatarTexto: { color: '#ffffff', fontSize: 18, fontWeight: '600' },
+  headerTitulo: { flex: 1, color: '#0f172a', fontSize: 18, fontWeight: '600' },
+  csv: { alignSelf: 'flex-start', marginTop: 12, backgroundColor: '#5DCAA5', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
   csvTexto: { color: '#12382E', fontSize: 14, fontWeight: '600' },
   carga: { marginTop: 40, alignItems: 'center' },
   error: { marginTop: 12, color: '#475569', fontSize: 14 },
@@ -507,15 +513,28 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   rehabilitarTexto: { color: '#334155', fontSize: 14, fontWeight: '500' },
-  triage: { marginTop: 16, backgroundColor: '#fffbeb', borderWidth: 1, borderColor: '#fde68a', borderRadius: 16, padding: 16 },
+  triage: { marginTop: 12, backgroundColor: '#fffbeb', borderWidth: 1, borderColor: '#fde68a', borderRadius: 12, padding: 16 },
   triageTitulo: { color: '#92400e', fontSize: 11, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase' },
   triageTexto: { marginTop: 6, color: '#451a03', fontSize: 14 },
-  tabs: { marginTop: 20, flexDirection: 'row', gap: 8 },
-  tab: { borderRadius: 999, backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 14, paddingVertical: 8 },
-  tabActivo: { backgroundColor: '#064e3b', borderColor: '#064e3b' },
-  tabTexto: { color: '#334155', fontSize: 14, fontWeight: '600' },
-  tabTextoActivo: { color: '#ffffff' },
-  lista: { marginTop: 14, gap: 10 },
+  subtitulo: { marginTop: 16, color: '#0f172a', fontSize: 16, fontWeight: '600' },
+  gestion: { color: '#64748b', fontSize: 11, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase' },
+  lista: { marginTop: 10, gap: 10 },
+  sesion: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderLeftWidth: 4,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  sesionNormal: { borderLeftColor: '#2563eb' },
+  sesionAlta: { borderLeftColor: '#ef4444' },
+  ansiedad: { color: '#0f172a', fontSize: 20, fontWeight: '600' },
+  ansiedadNumeroAlta: { color: '#dc2626' },
+  ansiedadAviso: { marginTop: 2, color: '#dc2626', fontSize: 12, fontWeight: '600' },
   card: { marginTop: 14, backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#f1f5f9', borderRadius: 16, padding: 16 },
   cardKicker: { color: '#64748b', fontSize: 14, fontWeight: '500' },
   cardTitulo: { marginTop: 4, color: '#0f172a', fontSize: 18, fontWeight: '600' },

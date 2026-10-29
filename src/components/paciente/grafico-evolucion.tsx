@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import type { PuntoEvolucionEmocional } from '@/lib/emociones';
 
-const ALTO = 160;
+const ALTO = 220;
 const MARGEN_IZQ = 28;
 const MARGEN_ABAJO = 28;
 const MARGEN_ARRIBA = 8;
@@ -87,10 +87,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   lienzo: {
-    alignSelf: 'center',
     height: ALTO,
     width: '100%',
-    maxWidth: 448,
   },
   grilla: {
     position: 'absolute',

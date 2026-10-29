@@ -45,7 +45,6 @@ export default function HomePacienteScreen() {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [serie, setSerie] = useState<PuntoEvolucionEmocional[]>([]);
-  const [verEvolucion, setVerEvolucion] = useState(false);
   const [actividadErp, setActividadErp] = useState<ActividadErp[]>([]);
   const [progreso, setProgreso] = useState<ProgresoSemanal>(PROGRESO_VACIO);
   const [triage, setTriage] = useState('');
@@ -203,19 +202,8 @@ export default function HomePacienteScreen() {
         </View>
 
         <View style={styles.card}>
-          <View style={styles.evolucionEncabezado}>
-            <Text style={[styles.seccion, styles.evolucionTitulo]}>Tu evolución emocional</Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ expanded: verEvolucion }}
-              onPress={() => setVerEvolucion((actual) => !actual)}
-              style={styles.evolucionBoton}>
-              <Text style={styles.evolucionBotonTexto}>
-                {verEvolucion ? 'Ocultar evolución' : 'Mostrar evolución'}
-              </Text>
-            </Pressable>
-          </View>
-          {verEvolucion ? <GraficoEvolucion datos={serie} /> : null}
+          <Text style={styles.seccion}>Tu evolución emocional</Text>
+          <GraficoEvolucion datos={serie} />
         </View>
 
         <View style={styles.card}>
@@ -457,29 +445,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     letterSpacing: -0.2,
-  },
-  evolucionEncabezado: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    marginBottom: 12,
-  },
-  evolucionTitulo: {
-    flex: 1,
-    marginBottom: 0,
-  },
-  evolucionBoton: {
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  evolucionBotonTexto: {
-    color: '#475569',
-    fontSize: 14,
-    fontWeight: '500',
   },
   motivo: {
     color: '#64748b',
