@@ -3,7 +3,8 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 
 import {
   cargarBandeja,
-  marcarNotificacionLeida,
+  eliminarNotificacion,
+  marcarTodasLeidas,
   VACIA,
   type BandejaNotificaciones,
   type NotificacionVista,
@@ -23,17 +24,21 @@ export function useBandeja(activa: boolean) {
     void recargar();
   }, [activa, recargar]);
 
-  const marcar = useCallback(async (id: string) => {
-    const resultado = await marcarNotificacionLeida(id);
+  const leerTodas = useCallback(async () => {
+    setBandeja((actual) => ({ ...actual, noLeidas: 0, prioridad: null }));
+    await marcarTodasLeidas();
+  }, []);
+
+  const eliminar = useCallback(async (id: string) => {
+    const resultado = await eliminarNotificacion(id);
     if ('error' in resultado) return;
     setBandeja((actual) => ({
+      ...actual,
       notificaciones: actual.notificaciones.filter((item) => item.id !== id),
-      noLeidas: Math.max(0, actual.noLeidas - 1),
-      prioridad: actual.prioridad?.id === id ? null : actual.prioridad,
     }));
   }, []);
 
-  return { bandeja, marcar };
+  return { bandeja, leerTodas, eliminar };
 }
 
 function cuando(iso: string) {
@@ -50,10 +55,12 @@ function cuando(iso: string) {
 
 export function Campana({
   bandeja,
-  marcar,
+  leerTodas,
+  eliminar,
 }: {
   bandeja: BandejaNotificaciones;
-  marcar: (id: string) => Promise<void>;
+  leerTodas: () => Promise<void>;
+  eliminar: (id: string) => Promise<void>;
 }) {
   const [abierta, setAbierta] = useState(false);
   const cuenta = bandeja.noLeidas;
@@ -63,7 +70,10 @@ export function Campana({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={cuenta > 0 ? `Notificaciones, ${cuenta} sin leer` : 'Notificaciones'}
-        onPress={() => setAbierta(true)}
+        onPress={() => {
+          setAbierta(true);
+          void leerTodas();
+        }}
         style={styles.boton}
       >
         <View style={styles.icono} accessibilityElementsHidden>
@@ -84,10 +94,10 @@ export function Campana({
             <Text style={styles.titulo}>Notificaciones</Text>
             <ScrollView style={styles.lista}>
               {bandeja.notificaciones.length === 0 ? (
-                <Text style={styles.vacio}>No tenés notificaciones nuevas.</Text>
+                <Text style={styles.vacio}>No tenés notificaciones.</Text>
               ) : (
                 bandeja.notificaciones.map((item) => (
-                  <Fila key={item.id} item={item} onLeida={() => void marcar(item.id)} />
+                  <Fila key={item.id} item={item} onEliminar={() => void eliminar(item.id)} />
                 ))
               )}
             </ScrollView>
@@ -98,7 +108,7 @@ export function Campana({
   );
 }
 
-function Fila({ item, onLeida }: { item: NotificacionVista; onLeida: () => void }) {
+function Fila({ item, onEliminar }: { item: NotificacionVista; onEliminar: () => void }) {
   return (
     <View style={styles.fila}>
       <View style={styles.filaTexto}>
@@ -106,30 +116,8 @@ function Fila({ item, onLeida }: { item: NotificacionVista; onLeida: () => void 
         <Text style={styles.filaMensaje}>{item.mensaje}</Text>
         <Text style={styles.filaCuando}>{cuando(item.createdAt)}</Text>
       </View>
-      <Pressable accessibilityRole="button" accessibilityLabel="Marcar como leída" onPress={onLeida} style={styles.cerrarItem}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Eliminar notificación" onPress={onEliminar} style={styles.cerrarItem}>
         <Text style={styles.cerrarItemTexto}>×</Text>
-      </Pressable>
-    </View>
-  );
-}
-
-export function AvisoPrioridad({
-  aviso,
-  onCerrar,
-}: {
-  aviso: NotificacionVista | null;
-  onCerrar: () => void;
-}) {
-  if (!aviso) return null;
-
-  return (
-    <View style={styles.aviso}>
-      <View style={styles.avisoTexto}>
-        <Text style={styles.avisoTitulo}>{aviso.titulo}</Text>
-        <Text style={styles.avisoMensaje}>{aviso.mensaje}</Text>
-      </View>
-      <Pressable accessibilityRole="button" accessibilityLabel="Cerrar aviso" onPress={onCerrar} style={styles.cerrarItem}>
-        <Text style={styles.cerrarAviso}>×</Text>
       </Pressable>
     </View>
   );
@@ -251,33 +239,5 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     fontSize: 18,
     fontWeight: '600',
-  },
-  aviso: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    backgroundColor: '#ecfdf5',
-    borderBottomWidth: 1,
-    borderBottomColor: '#d1fae5',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  avisoTexto: {
-    flex: 1,
-  },
-  avisoTitulo: {
-    color: '#064e3b',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  avisoMensaje: {
-    marginTop: 4,
-    color: '#334155',
-    fontSize: 14,
-  },
-  cerrarAviso: {
-    color: '#64748b',
-    fontSize: 18,
-    fontWeight: '700',
   },
 });

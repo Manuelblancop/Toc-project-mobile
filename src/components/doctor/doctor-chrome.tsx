@@ -3,7 +3,7 @@ import { useState, useEffect, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AvisoPrioridad, Campana, useBandeja } from '@/components/notificaciones/campana';
+import { Campana, useBandeja } from '@/components/notificaciones/campana';
 import { registrarPresencia } from '@/lib/doctor';
 import { cerrarSesion } from '@/lib/sesion';
 
@@ -11,10 +11,8 @@ export function DoctorChrome({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const [menuAbierto, setMenuAbierto] = useState(false);
-  const [avisoOculto, setAvisoOculto] = useState<string | null>(null);
   const esPendiente = pathname === '/doctor/pendiente';
-  const { bandeja, marcar } = useBandeja(!esPendiente);
-  const aviso = bandeja.prioridad && avisoOculto !== bandeja.prioridad.id ? bandeja.prioridad : null;
+  const { bandeja, leerTodas, eliminar } = useBandeja(!esPendiente);
 
   useEffect(() => {
     setMenuAbierto(false);
@@ -53,10 +51,8 @@ export function DoctorChrome({ children }: { children: ReactNode }) {
         <Text style={styles.brand}>
           Toc <Text style={styles.brandProject}>Project</Text>
         </Text>
-        <Campana bandeja={bandeja} marcar={marcar} />
+        <Campana bandeja={bandeja} leerTodas={leerTodas} eliminar={eliminar} />
       </View>
-
-      <AvisoPrioridad aviso={aviso} onCerrar={() => setAvisoOculto(bandeja.prioridad?.id ?? null)} />
 
       <View style={styles.body}>{children}</View>
 

@@ -69,7 +69,32 @@ export async function cargarBandeja(): Promise<BandejaNotificaciones | { error: 
   };
 }
 
-export async function marcarNotificacionLeida(id: string) {
+export async function marcarTodasLeidas() {
+  const acceso = await sesion();
+  if ('error' in acceso) return { error: acceso.error };
+
+  let respuesta: Response;
+  try {
+    respuesta = await fetch(`${acceso.base}/api/notificaciones/mobile`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${acceso.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ leerTodas: true }),
+    });
+  } catch {
+    return { error: 'No pudimos actualizar las notificaciones.' };
+  }
+
+  const cuerpo = (await respuesta.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+  if (!respuesta.ok || !cuerpo?.success) {
+    return { error: cuerpo?.error || 'No pudimos actualizar las notificaciones.' };
+  }
+  return { success: true as const };
+}
+
+export async function eliminarNotificacion(id: string) {
   const acceso = await sesion();
   if ('error' in acceso) return { error: acceso.error };
 

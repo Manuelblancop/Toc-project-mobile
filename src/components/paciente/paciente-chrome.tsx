@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EmeraldSpinner } from '@/components/emerald-spinner';
-import { AvisoPrioridad, Campana, useBandeja } from '@/components/notificaciones/campana';
+import { Campana, useBandeja } from '@/components/notificaciones/campana';
 import { cerrarSesion, destinoTrasAuth } from '@/lib/sesion';
 import { supabase } from '@/lib/supabase';
 
@@ -36,9 +36,7 @@ export function PacienteChrome({
   const autorizado = useRef(false);
   const [comprobando, setComprobando] = useState(esPaciente);
   const [menuAbierto, setMenuAbierto] = useState(false);
-  const [avisoOculto, setAvisoOculto] = useState<string | null>(null);
-  const { bandeja, marcar } = useBandeja(esPaciente);
-  const aviso = bandeja.prioridad && avisoOculto !== bandeja.prioridad.id ? bandeja.prioridad : null;
+  const { bandeja, leerTodas, eliminar } = useBandeja(esPaciente);
 
   useEffect(() => {
     if (!navegacionLista || !sesionLista) return;
@@ -99,12 +97,8 @@ export function PacienteChrome({
           <Text style={styles.brand}>
             Toc <Text style={styles.brandProject}>Project</Text>
           </Text>
-          <Campana bandeja={bandeja} marcar={marcar} />
+          <Campana bandeja={bandeja} leerTodas={leerTodas} eliminar={eliminar} />
         </View>
-      ) : null}
-
-      {esPaciente ? (
-        <AvisoPrioridad aviso={aviso} onCerrar={() => setAvisoOculto(bandeja.prioridad?.id ?? null)} />
       ) : null}
 
       <View style={styles.body}>{children}</View>
