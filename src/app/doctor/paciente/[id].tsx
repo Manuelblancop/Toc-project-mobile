@@ -7,6 +7,7 @@ import { AvisoPausaAura } from '@/components/doctor/aviso-pausa';
 import { EmeraldSpinner } from '@/components/emerald-spinner';
 import { GraficoEvolucion } from '@/components/paciente/grafico-evolucion';
 import {
+  archivarPacienteDeLista,
   cargarFichaPaciente,
   csvDeHistorial,
   guardarNotaClinica,
@@ -37,6 +38,7 @@ export default function FichaPacienteScreen() {
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [rehabilitando, setRehabilitando] = useState(false);
+  const [archivando, setArchivando] = useState(false);
   const turnoElegido = useRef('');
 
   const cargar = useCallback(async () => {
@@ -65,6 +67,19 @@ export default function FichaPacienteScreen() {
       void cargar();
     }, [cargar]),
   );
+
+  async function quitarDeLaLista() {
+    if (!pacienteId || archivando) return;
+    setArchivando(true);
+    setAviso('');
+    const resultado = await archivarPacienteDeLista(pacienteId);
+    setArchivando(false);
+    if ('error' in resultado) {
+      setAviso(resultado.error ?? 'No pudimos quitar al paciente de la lista.');
+      return;
+    }
+    router.push('/doctor');
+  }
 
   function quitarEjercicio(ejercicioId: string) {
     setFicha((actual) =>
@@ -132,6 +147,18 @@ export default function FichaPacienteScreen() {
         </View>
         <Text style={styles.headerTitulo}>Historia clínica de paciente {ficha?.nombre ?? 'Paciente'}</Text>
       </View>
+      {ficha ? (
+        <Pressable
+          accessibilityRole="button"
+          disabled={archivando}
+          onPress={() => void quitarDeLaLista()}
+          style={styles.quitar}
+        >
+          <Text style={styles.quitarTexto}>
+            {archivando ? 'Quitando...' : 'Finalizar tratamiento / Eliminar de lista'}
+          </Text>
+        </Pressable>
+      ) : null}
       {ficha && ficha.filasCsv.length > 0 ? (
         <Pressable accessibilityRole="button" onPress={() => void exportar()} style={styles.csv}>
           <Text style={styles.csvTexto}>Exportar Historial (CSV)</Text>
@@ -475,6 +502,16 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#f8fafc' },
   volver: { alignSelf: 'flex-start', marginBottom: 8 },
   volverTexto: { color: '#64748b', fontSize: 14, fontWeight: '500' },
+  quitar: {
+    marginTop: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+  },
+  quitarTexto: { color: '#b91c1c', fontSize: 14, fontWeight: '600', textAlign: 'center' },
   header: {
     marginTop: 4,
     flexDirection: 'row',

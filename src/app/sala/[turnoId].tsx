@@ -15,7 +15,7 @@ import { WebView } from 'react-native-webview';
 
 import { EmeraldSpinner } from '@/components/emerald-spinner';
 import { pedirSala } from '@/lib/agenda';
-import { cargarNotaDeSala, guardarNotaClinica } from '@/lib/doctor';
+import { cargarNotaDeSala, finalizarConsulta, guardarNotaClinica } from '@/lib/doctor';
 
 export default function SalaScreen() {
   const insets = useSafeAreaInsets();
@@ -32,6 +32,7 @@ export default function SalaScreen() {
   const [avisoNota, setAvisoNota] = useState('');
   const [notaOk, setNotaOk] = useState(false);
   const [guardando, setGuardando] = useState(false);
+  const [finalizando, setFinalizando] = useState(false);
 
   useEffect(() => {
     if (!id) {
@@ -75,6 +76,19 @@ export default function SalaScreen() {
     setPidiendo(true);
     await Promise.all([pedirCamara(), pedirMicrofono()]);
     setPidiendo(false);
+  }
+
+  async function cerrarConsulta() {
+    if (finalizando || !id) return;
+    setFinalizando(true);
+    setAvisoNota('');
+    const resultado = await finalizarConsulta(id);
+    setFinalizando(false);
+    if ('error' in resultado) {
+      setAvisoNota(resultado.error ?? 'No pudimos finalizar la consulta.');
+      return;
+    }
+    router.back();
   }
 
   async function guardarNota() {
@@ -138,6 +152,14 @@ export default function SalaScreen() {
 
       {esDoctor ? (
         <View style={[styles.notas, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+          <Pressable
+            accessibilityRole="button"
+            disabled={finalizando}
+            onPress={() => void cerrarConsulta()}
+            style={[styles.finalizar, finalizando && styles.guardarOff]}
+          >
+            <Text style={styles.finalizarTexto}>{finalizando ? 'Finalizando...' : 'Finalizar Consulta'}</Text>
+          </Pressable>
           <Text style={styles.notasTitulo}>Notas clínicas</Text>
           <TextInput
             value={nota}
@@ -183,6 +205,13 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     gap: 8,
   },
+  finalizar: {
+    alignItems: 'center',
+    backgroundColor: '#064e3b',
+    borderRadius: 12,
+    paddingVertical: 12,
+  },
+  finalizarTexto: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
   notasTitulo: { color: '#0f172a', fontSize: 14, fontWeight: '600' },
   notasInput: {
     flex: 1,

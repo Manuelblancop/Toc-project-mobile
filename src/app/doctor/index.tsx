@@ -20,7 +20,9 @@ import { EmeraldSpinner } from '@/components/emerald-spinner';
 import {
   COMISION_POR_CONSULTA,
   TICKET_BASE,
+  archivarPacienteDeLista,
   cargarPanelDoctor,
+  finalizarConsulta,
   guardarNotaClinica,
   ocultarTurnoDeDoctor,
   pesos,
@@ -47,6 +49,8 @@ export default function DoctorHomeScreen() {
   const [verCompletadas, setVerCompletadas] = useState(false);
   const [verCanceladas, setVerCanceladas] = useState(false);
   const [ocultandoId, setOcultandoId] = useState<string | null>(null);
+  const [finalizandoId, setFinalizandoId] = useState<string | null>(null);
+  const [archivandoId, setArchivandoId] = useState<string | null>(null);
 
   const cargar = useCallback(async () => {
     try {
@@ -76,6 +80,43 @@ export default function DoctorHomeScreen() {
   const completadas = agenda.filter((turno) => turno.estado === 'COMPLETADO');
   const canceladas = agenda.filter((turno) => turno.estado === 'CANCELADO');
 
+  async function quitarPaciente(pacienteId: string) {
+    if (archivandoId) return;
+    setArchivandoId(pacienteId);
+    setError('');
+    const resultado = await archivarPacienteDeLista(pacienteId);
+    setArchivandoId(null);
+    if ('error' in resultado) {
+      setError(resultado.error ?? 'No pudimos quitar al paciente de la lista.');
+      return;
+    }
+    setPanel((actual) => {
+      if (!actual) return actual;
+      return { ...actual, pacientes: actual.pacientes.filter((paciente) => paciente.id !== pacienteId) };
+    });
+  }
+
+  async function cerrarConsulta(turnoId: string) {
+    if (finalizandoId) return;
+    setFinalizandoId(turnoId);
+    setError('');
+    const resultado = await finalizarConsulta(turnoId);
+    setFinalizandoId(null);
+    if ('error' in resultado) {
+      setError(resultado.error ?? 'No pudimos finalizar la consulta.');
+      return;
+    }
+    setPanel((actual) => {
+      if (!actual) return actual;
+      return {
+        ...actual,
+        agenda: actual.agenda.map((turno) =>
+          turno.id === turnoId ? { ...turno, estado: 'COMPLETADO' } : turno,
+        ),
+      };
+    });
+  }
+
   function pedirOcultar(turnoId: string) {
     if (ocultandoId) return;
     Alert.alert('Ocultar turno', '¿Querés ocultar este turno de tu agenda?', [
@@ -99,18 +140,7 @@ export default function DoctorHomeScreen() {
     }
     setPanel((actual) => {
       if (!actual) return actual;
-      const agenda = actual.agenda.filter((turno) => turno.id !== turnoId);
-      const pacientes = new Map<string, (typeof agenda)[number]>();
-      for (const turno of agenda) {
-        if (!pacientes.has(turno.pacienteId)) pacientes.set(turno.pacienteId, turno);
-      }
-      return {
-        ...actual,
-        agenda,
-        pacientes: [...pacientes.values()]
-          .map((turno) => ({ id: turno.pacienteId, nombre: turno.pacienteNombre, pausa: turno.pausa }))
-          .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')),
-      };
+      return { ...actual, agenda: actual.agenda.filter((turno) => turno.id !== turnoId) };
     });
   }
 
@@ -191,6 +221,8 @@ export default function DoctorHomeScreen() {
                       key={turno.id}
                       turno={turno}
                       onPress={() => abrirFicha(turno.pacienteId)}
+                      finalizando={finalizandoId === turno.id}
+                      onFinalizar={turno.estado === 'CONFIRMADO' ? () => void cerrarConsulta(turno.id) : undefined}
                     />
                   ))}
                 </View>
@@ -240,19 +272,26 @@ export default function DoctorHomeScreen() {
             </View>
           ) : (
             panel.pacientes.map((paciente) => (
-              <Pressable
-                key={paciente.id}
-                accessibilityRole="button"
-                onPress={() => abrirFicha(paciente.id)}
-                style={styles.card}
-              >
-                <Text style={styles.nombre}>{paciente.nombre}</Text>
+              <View key={paciente.id} style={styles.card}>
+                <Pressable accessibilityRole="button" onPress={() => abrirFicha(paciente.id)}>
+                  <Text style={styles.nombre}>{paciente.nombre}</Text>
+                </Pressable>
                 {paciente.pausa ? (
                   <View style={styles.pausa}>
                     <AvisoPausaAura pausa={paciente.pausa} />
                   </View>
                 ) : null}
-              </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={archivandoId === paciente.id}
+                  onPress={() => void quitarPaciente(paciente.id)}
+                  style={styles.quitar}
+                >
+                  <Text style={styles.quitarTexto}>
+                    {archivandoId === paciente.id ? 'Quitando...' : 'Finalizar tratamiento / Eliminar de lista'}
+                  </Text>
+                </Pressable>
+              </View>
             ))
           )}
 
@@ -403,12 +442,16 @@ function TarjetaTurno({
   onNotaGuardada,
   onOcultar,
   ocultando,
+  onFinalizar,
+  finalizando,
 }: {
   turno: TurnoAgenda;
   onPress: () => void;
   onNotaGuardada?: (notaId: string, contenido: string) => void;
   onOcultar?: () => void;
   ocultando?: boolean;
+  onFinalizar?: () => void;
+  finalizando?: boolean;
 }) {
   const conNota = turno.estado === 'COMPLETADO';
 
@@ -436,13 +479,25 @@ function TarjetaTurno({
         ) : null}
       </View>
       {turno.estado === 'CONFIRMADO' ? (
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.push({ pathname: '/sala/[turnoId]', params: { turnoId: turno.id } })}
-          style={styles.videollamada}
-        >
-          <Text style={styles.videollamadaTexto}>Ingresar a videollamada</Text>
-        </Pressable>
+        <View style={styles.accionesTurno}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push({ pathname: '/sala/[turnoId]', params: { turnoId: turno.id } })}
+            style={styles.videollamada}
+          >
+            <Text style={styles.videollamadaTexto}>Ingresar a videollamada</Text>
+          </Pressable>
+          {onFinalizar ? (
+            <Pressable
+              accessibilityRole="button"
+              disabled={finalizando}
+              onPress={onFinalizar}
+              style={styles.finalizar}
+            >
+              <Text style={styles.finalizarTexto}>{finalizando ? 'Finalizando...' : 'Finalizar Consulta'}</Text>
+            </Pressable>
+          ) : null}
+        </View>
       ) : null}
       {turno.pausa ? (
         <View style={styles.pausa}>
@@ -545,8 +600,26 @@ const styles = StyleSheet.create({
   papelera: { borderRadius: 8, padding: 8 },
   papeleraOff: { opacity: 0.5 },
   papeleraIcono: { fontSize: 16, color: '#94a3b8' },
-  videollamada: { marginTop: 12, alignItems: 'center', backgroundColor: '#5DCAA5', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
+  videollamada: { alignItems: 'center', backgroundColor: '#5DCAA5', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
   videollamadaTexto: { color: '#12382E', fontSize: 13, fontWeight: '700' },
+  accionesTurno: { marginTop: 12, gap: 8 },
+  finalizar: {
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 8,
+    paddingVertical: 10,
+  },
+  finalizarTexto: { color: '#334155', fontSize: 13, fontWeight: '600' },
+  quitar: {
+    marginTop: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 8,
+    paddingVertical: 10,
+  },
+  quitarTexto: { color: '#b91c1c', fontSize: 13, fontWeight: '600', textAlign: 'center' },
   hora: { minWidth: 48, color: '#64748b', fontSize: 14, fontWeight: '600' },
   turnoTexto: { flex: 1 },
   nombre: { color: '#0f172a', fontSize: 15, fontWeight: '600' },

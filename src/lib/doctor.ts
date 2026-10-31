@@ -268,32 +268,117 @@ export async function cargarPanelDoctor(): Promise<
     };
   });
 
-  const pacientesMapa = new Map<string, PacienteAgenda>();
-  for (const turno of agenda) {
-    if (!pacientesMapa.has(turno.pacienteId)) {
-      pacientesMapa.set(turno.pacienteId, {
-        id: turno.pacienteId,
-        nombre: turno.pacienteNombre,
-        pausa: turno.pausa,
-      });
-    }
-  }
-
-  const pacientes = [...pacientesMapa.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  const lista = await listarPacientesDelDoctor();
+  if ('error' in lista) throw new Error(lista.error);
 
   return {
     destino: null,
     panel: {
       nombre: sesion.nombre,
       reputacion: sesion.rating,
-      pacientesActivos: metricas.pacientesActivos,
+      pacientesActivos: lista.pacientesActivos,
       facturado: metricas.bruto,
       comision: metricas.comision,
       neto: metricas.neto,
       agenda,
-      pacientes,
+      pacientes: lista.pacientes,
     },
   };
+}
+
+async function sesionBearer(): Promise<{ error: string } | { base: string; token: string }> {
+  const base = process.env.EXPO_PUBLIC_AURA_WEB_URL?.replace(/\/+$/, '');
+  if (!base) return { error: 'Falta EXPO_PUBLIC_AURA_WEB_URL.' };
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) return { error: 'No autorizado' };
+  return { base, token };
+}
+
+export async function listarPacientesDelDoctor(): Promise<
+  { error: string } | { pacientes: PacienteAgenda[]; pacientesActivos: number }
+> {
+  const sesion = await sesionBearer();
+  if ('error' in sesion) return { error: sesion.error };
+
+  let respuesta: Response;
+  try {
+    respuesta = await fetch(`${sesion.base}/api/doctor/mobile/pacientes`, {
+      headers: { Authorization: `Bearer ${sesion.token}` },
+    });
+  } catch {
+    return { error: 'No pudimos cargar tus pacientes.' };
+  }
+
+  const cuerpo = (await respuesta.json().catch(() => null)) as {
+    error?: string;
+    pacientesActivos?: unknown;
+    pacientes?: { id?: unknown; nombre?: unknown; pausa?: { ocurridoEn?: unknown } | null }[];
+  } | null;
+
+  if (!respuesta.ok || !Array.isArray(cuerpo?.pacientes) || typeof cuerpo.pacientesActivos !== 'number') {
+    return { error: cuerpo?.error || 'No pudimos cargar tus pacientes.' };
+  }
+
+  const pacientes: PacienteAgenda[] = cuerpo.pacientes.flatMap((fila) => {
+    if (typeof fila.id !== 'string' || typeof fila.nombre !== 'string') return [];
+    const ocurrido = fila.pausa && typeof fila.pausa.ocurridoEn === 'string' ? fila.pausa.ocurridoEn : null;
+    return [{ id: fila.id, nombre: fila.nombre, pausa: fila.pausa ? { ocurridoEn: ocurrido } : null }];
+  });
+
+  return { pacientes, pacientesActivos: cuerpo.pacientesActivos };
+}
+
+export async function archivarPacienteDeLista(pacienteId: string) {
+  const sesion = await sesionBearer();
+  if ('error' in sesion) return { error: sesion.error };
+
+  let respuesta: Response;
+  try {
+    respuesta = await fetch(`${sesion.base}/api/doctor/mobile/pacientes`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${sesion.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ pacienteId }),
+    });
+  } catch {
+    return { error: 'No pudimos quitar al paciente de la lista.' };
+  }
+
+  const cuerpo = (await respuesta.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+  if (!respuesta.ok || !cuerpo?.success) {
+    return { error: cuerpo?.error || 'No pudimos quitar al paciente de la lista.' };
+  }
+  return { success: true as const };
+}
+
+export async function finalizarConsulta(turnoId: string) {
+  const sesion = await sesionBearer();
+  if ('error' in sesion) return { error: sesion.error };
+
+  let respuesta: Response;
+  try {
+    respuesta = await fetch(`${sesion.base}/api/turnos/mobile/completar`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${sesion.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ turnoId }),
+    });
+  } catch {
+    return { error: 'No pudimos finalizar la consulta.' };
+  }
+
+  const cuerpo = (await respuesta.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+  if (!respuesta.ok || !cuerpo?.success) {
+    return { error: cuerpo?.error || 'No pudimos finalizar la consulta.' };
+  }
+  return { success: true as const };
 }
 
 async function metricasDelPanel(doctorId: string) {
@@ -312,13 +397,8 @@ async function metricasDelPanel(doctorId: string) {
     return suma + (Number.isFinite(precio) ? precio : 0);
   }, 0);
   const comision = Math.round(facturado * 0.12);
-  const pacientesActivos = new Set(
-    (turnos.data ?? [])
-      .filter((turno) => turno.estado === 'CONFIRMADO' || turno.estado === 'COMPLETADO')
-      .map((turno) => String(turno.paciente_id)),
-  ).size;
 
-  return { bruto: facturado, comision, neto: facturado - comision, pacientesActivos };
+  return { bruto: facturado, comision, neto: facturado - comision };
 }
 
 export async function cargarFichaPaciente(pacienteId: string): Promise<
