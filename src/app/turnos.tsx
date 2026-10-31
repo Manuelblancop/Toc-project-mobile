@@ -13,6 +13,7 @@ import {
   pedirLinkDePago,
   totalConPuntos,
   totalSinPuntos,
+  type DiaDisponible,
   type DiaReprogramar,
   type DoctorAgenda,
   type TurnoPropio,
@@ -40,6 +41,68 @@ function pesos(valor: number) {
     currency: 'ARS',
     maximumFractionDigits: 0,
   });
+}
+
+function HorariosDisponibles({
+  dias,
+  inicioElegido,
+  onElegir,
+  disabled = false,
+}: {
+  dias: DiaDisponible[];
+  inicioElegido: string | null;
+  onElegir: (etiqueta: string, hora: string, inicio: string) => void;
+  disabled?: boolean;
+}) {
+  const [diaClave, setDiaClave] = useState(dias[0]?.clave ?? '');
+  const diaActivo = dias.find((dia) => dia.clave === diaClave) ?? dias[0];
+  if (!diaActivo) return null;
+
+  return (
+    <View style={styles.horariosBloque}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.diasFila}>
+        {dias.map((dia) => {
+          const activo = dia.clave === diaActivo.clave;
+          return (
+            <Pressable
+              key={dia.clave}
+              accessibilityRole="button"
+              accessibilityState={{ selected: activo }}
+              onPress={() => setDiaClave(dia.clave)}
+              style={[styles.diaChip, activo && styles.diaChipActivo]}>
+              <Text style={[styles.diaChipTexto, activo && styles.diaChipTextoActivo]}>{dia.etiqueta}</Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+      <View style={styles.horariosCaja}>
+        <ScrollView
+          nestedScrollEnabled
+          showsVerticalScrollIndicator
+          style={styles.horariosScroll}
+          contentContainerStyle={styles.horariosContenido}>
+          <View style={styles.grilla}>
+            {diaActivo.horarios.map((horario) => {
+              const elegido = inicioElegido === horario.inicio;
+              return (
+                <Pressable
+                  key={horario.inicio}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: elegido, disabled }}
+                  disabled={disabled}
+                  onPress={() => onElegir(diaActivo.etiqueta, horario.hora, horario.inicio)}
+                  style={[styles.hora, styles.horaLibre, elegido && styles.horaElegida]}>
+                  <Text style={[styles.horaTexto, styles.horaTextoLibre, elegido && styles.horaTextoElegida]}>
+                    {horario.hora}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </ScrollView>
+      </View>
+    </View>
+  );
 }
 
 function Estrellas({ rating }: { rating: number }) {
@@ -121,7 +184,12 @@ export default function TurnosScreen() {
   const descuento = descuentoAplicadoTurno(puntosUsados);
   const total = usarPuntos ? totalConPuntos(puntos) : totalSinPuntos();
 
-  function pedirCancelacion(turno: TurnoPropio) {
+  function pedirCancelacion(turnoId: string) {
+    const id = turnoId.trim();
+    if (!id) {
+      setError('El turno no es válido.');
+      return;
+    }
     Alert.alert(
       'Cancelar turno',
       'El horario queda libre. El reintegro del pago en Mercado Pago no es automático.',
@@ -132,7 +200,7 @@ export default function TurnosScreen() {
           style: 'destructive',
           onPress: () => {
             void (async () => {
-              const resultado = await cancelarTurnoPropio(turno.id);
+              const resultado = await cancelarTurnoPropio(id);
               if ('error' in resultado) {
                 setError(resultado.error ?? 'No pudimos cancelar el turno.');
                 return;
@@ -241,7 +309,7 @@ export default function TurnosScreen() {
                 </Pressable>
                 <Pressable
                   accessibilityRole="button"
-                  onPress={() => pedirCancelacion(turno)}
+                  onPress={() => pedirCancelacion(turno.id)}
                   style={styles.reprogramar}
                 >
                   <Text style={styles.reprogramarTexto}>Cancelar</Text>
@@ -287,28 +355,11 @@ export default function TurnosScreen() {
               {doctor.dias.length === 0 ? (
                 <Text style={styles.sinHorarios}>Sin horarios en los próximos 30 días.</Text>
               ) : (
-                doctor.dias.map((dia) => (
-                  <View key={dia.clave} style={styles.diaBloque}>
-                    <Text style={styles.dia}>{dia.etiqueta}</Text>
-                    <View style={styles.grilla}>
-                      {dia.horarios.map((horario) => {
-                        const elegido = slot?.doctor.userId === doctor.userId && slot.inicio === horario.inicio;
-                        return (
-                          <Pressable
-                            key={horario.inicio}
-                            accessibilityRole="button"
-                            accessibilityState={{ selected: elegido }}
-                            onPress={() => abrir(doctor, dia.etiqueta, horario.hora, horario.inicio)}
-                            style={[styles.hora, styles.horaLibre, elegido && styles.horaElegida]}>
-                            <Text style={[styles.horaTexto, styles.horaTextoLibre, elegido && styles.horaTextoElegida]}>
-                              {horario.hora}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  </View>
-                ))
+                <HorariosDisponibles
+                  dias={doctor.dias}
+                  inicioElegido={slot?.doctor.userId === doctor.userId ? slot.inicio : null}
+                  onElegir={(etiqueta, hora, inicio) => abrir(doctor, etiqueta, hora, inicio)}
+                />
               )}
             </View>
           ))
@@ -328,38 +379,20 @@ export default function TurnosScreen() {
             <Text style={styles.dialogoAyuda}>
               {turnoAReprogramar?.profesional} · {turnoAReprogramar?.cuando}. El pago de este turno se mantiene.
             </Text>
-            <ScrollView style={styles.huecos} contentContainerStyle={styles.huecosContenido}>
-              {cargandoHuecos ? (
+            {cargandoHuecos ? (
+              <View style={styles.cargandoHuecos}>
                 <EmeraldSpinner />
-              ) : diasReprogramar.length === 0 && !errorReprogramar ? (
-                <Text style={styles.sinHorarios}>No hay horarios libres en los próximos 30 días.</Text>
-              ) : (
-                diasReprogramar.map((dia) => (
-                  <View key={dia.clave} style={styles.diaBloque}>
-                    <Text style={styles.dia}>{dia.etiqueta}</Text>
-                    <View style={styles.grilla}>
-                      {dia.horarios.map((horario) => {
-                        const elegido = horarioNuevo === horario.inicio;
-                        return (
-                          <Pressable
-                            key={horario.inicio}
-                            accessibilityRole="button"
-                            accessibilityState={{ selected: elegido }}
-                            disabled={reprogramando}
-                            onPress={() => setHorarioNuevo(horario.inicio)}
-                            style={[styles.hora, styles.horaLibre, elegido && styles.horaElegida]}
-                          >
-                            <Text style={[styles.horaTexto, styles.horaTextoLibre, elegido && styles.horaTextoElegida]}>
-                              {horario.hora}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  </View>
-                ))
-              )}
-            </ScrollView>
+              </View>
+            ) : diasReprogramar.length === 0 && !errorReprogramar ? (
+              <Text style={styles.sinHorarios}>No hay horarios libres en los próximos 30 días.</Text>
+            ) : (
+              <HorariosDisponibles
+                dias={diasReprogramar}
+                inicioElegido={horarioNuevo}
+                disabled={reprogramando}
+                onElegir={(_etiqueta, _hora, inicio) => setHorarioNuevo(inicio)}
+              />
+            )}
             {errorReprogramar ? (
               <Text accessibilityRole="alert" style={styles.error}>
                 {errorReprogramar}
@@ -482,8 +515,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   reprogramarTexto: { color: '#ffffff', fontSize: 14, fontWeight: '700' },
-  huecos: { maxHeight: 280, marginTop: 16 },
-  huecosContenido: { paddingBottom: 8 },
+  cargandoHuecos: { minHeight: 120, alignItems: 'center', justifyContent: 'center' },
   kicker: {
     marginTop: 8,
     marginBottom: 12,
@@ -535,9 +567,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
-  diaBloque: { marginTop: 12 },
-  dia: { marginBottom: 8, color: '#64748b', fontSize: 12, fontWeight: '500' },
   sinHorarios: { marginTop: 12, textAlign: 'center', color: '#94a3b8', fontSize: 14 },
+  horariosBloque: { marginTop: 12, gap: 8 },
+  diasFila: { gap: 8, paddingVertical: 2 },
+  diaChip: { borderRadius: 999, backgroundColor: '#f1f5f9', paddingHorizontal: 12, paddingVertical: 8 },
+  diaChipActivo: { backgroundColor: '#064e3b' },
+  diaChipTexto: { color: '#475569', fontSize: 12, fontWeight: '600' },
+  diaChipTextoActivo: { color: '#ffffff' },
+  horariosCaja: { maxHeight: 280 },
+  horariosScroll: { maxHeight: 280 },
+  horariosContenido: { paddingBottom: 4 },
   grilla: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   hora: { width: '47%', borderRadius: 999, paddingVertical: 8, paddingHorizontal: 16, alignItems: 'center' },
   horaLibre: { backgroundColor: '#ecfdf5' },

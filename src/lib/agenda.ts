@@ -198,6 +198,9 @@ export async function pedirHuecosParaReprogramar(turnoId: string): Promise<{ dia
 }
 
 export async function cancelarTurnoPropio(turnoId: string) {
+  const id = turnoId.trim();
+  if (!id) return { error: 'El turno no es válido.' };
+
   const sesion = await tokenDeSesion();
   if ('error' in sesion) return { error: sesion.error };
 
@@ -209,7 +212,7 @@ export async function cancelarTurnoPropio(turnoId: string) {
         Authorization: `Bearer ${sesion.token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ turnoId }),
+      body: JSON.stringify({ turnoId: id }),
     });
   } catch {
     return { error: 'No pudimos cancelar el turno.' };
