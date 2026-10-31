@@ -1,15 +1,19 @@
 import { router, useFocusEffect } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useCallback, useState } from 'react';
-import { Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { EmeraldSpinner } from '@/components/emerald-spinner';
 import {
+  cancelarTurnoPropio,
   cargarAgenda,
   cargarMisTurnos,
+  confirmarReprogramacion,
+  pedirHuecosParaReprogramar,
   pedirLinkDePago,
   totalConPuntos,
   totalSinPuntos,
+  type DiaReprogramar,
   type DoctorAgenda,
   type TurnoPropio,
 } from '@/lib/agenda';
@@ -66,6 +70,12 @@ export default function TurnosScreen() {
   const [usarPuntos, setUsarPuntos] = useState(false);
   const [pagando, setPagando] = useState(false);
   const [errorPago, setErrorPago] = useState<string | null>(null);
+  const [turnoAReprogramar, setTurnoAReprogramar] = useState<TurnoPropio | null>(null);
+  const [diasReprogramar, setDiasReprogramar] = useState<DiaReprogramar[]>([]);
+  const [cargandoHuecos, setCargandoHuecos] = useState(false);
+  const [horarioNuevo, setHorarioNuevo] = useState<string | null>(null);
+  const [errorReprogramar, setErrorReprogramar] = useState<string | null>(null);
+  const [reprogramando, setReprogramando] = useState(false);
 
   const recargar = useCallback(async () => {
     const agenda = await cargarAgenda();
@@ -111,6 +121,60 @@ export default function TurnosScreen() {
   const descuento = descuentoAplicadoTurno(puntosUsados);
   const total = usarPuntos ? totalConPuntos(puntos) : totalSinPuntos();
 
+  function pedirCancelacion(turno: TurnoPropio) {
+    Alert.alert(
+      'Cancelar turno',
+      'El horario queda libre. El reintegro del pago en Mercado Pago no es automático.',
+      [
+        { text: 'Volver', style: 'cancel' },
+        {
+          text: 'Cancelar turno',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              const resultado = await cancelarTurnoPropio(turno.id);
+              if ('error' in resultado) {
+                setError(resultado.error ?? 'No pudimos cancelar el turno.');
+                return;
+              }
+              await recargar();
+            })();
+          },
+        },
+      ],
+    );
+  }
+
+  async function abrirReprogramar(turno: TurnoPropio) {
+    setTurnoAReprogramar(turno);
+    setDiasReprogramar([]);
+    setHorarioNuevo(null);
+    setErrorReprogramar(null);
+    setCargandoHuecos(true);
+    const resultado = await pedirHuecosParaReprogramar(turno.id);
+    setCargandoHuecos(false);
+    if ('error' in resultado) {
+      setErrorReprogramar(resultado.error ?? 'No pudimos consultar los horarios.');
+      return;
+    }
+    setDiasReprogramar(resultado.dias);
+  }
+
+  async function guardarReprogramacion() {
+    if (!turnoAReprogramar || !horarioNuevo || reprogramando) return;
+    setReprogramando(true);
+    setErrorReprogramar(null);
+    const resultado = await confirmarReprogramacion(turnoAReprogramar.id, horarioNuevo);
+    setReprogramando(false);
+    if ('error' in resultado) {
+      setErrorReprogramar(resultado.error ?? 'No pudimos reprogramar el turno.');
+      return;
+    }
+    setTurnoAReprogramar(null);
+    setHorarioNuevo(null);
+    await recargar();
+  }
+
   function abrir(doctor: DoctorAgenda, etiqueta: string, horario: string, inicio: string) {
     setUsarPuntos(false);
     setErrorPago(null);
@@ -147,18 +211,42 @@ export default function TurnosScreen() {
         {misTurnos.map((turno) => (
           <View key={turno.id} style={styles.propio}>
             <Text style={styles.propioKicker}>
-              {turno.estado === 'CONFIRMADO' ? 'Próxima consulta' : 'Sesión finalizada'}
+              {turno.estado === 'CONFIRMADO'
+                ? 'Próxima consulta'
+                : turno.estado === 'PENDIENTE'
+                  ? 'Pago pendiente'
+                  : 'Sesión finalizada'}
             </Text>
             <Text style={styles.propioNombre}>{turno.profesional}</Text>
             <Text style={styles.propioCuando}>{turno.cuando} · Videoconsulta</Text>
-            {turno.estado === 'CONFIRMADO' ? (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => router.push({ pathname: '/sala/[turnoId]', params: { turnoId: turno.id } })}
-                style={styles.videollamada}
-              >
-                <Text style={styles.videollamadaTexto}>Ingresar a videollamada</Text>
-              </Pressable>
+            {turno.estado === 'CONFIRMADO' || turno.estado === 'PENDIENTE' ? (
+              <View style={styles.acciones}>
+                {turno.estado === 'CONFIRMADO' ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => router.push({ pathname: '/sala/[turnoId]', params: { turnoId: turno.id } })}
+                    style={styles.videollamada}
+                  >
+                    <Text style={styles.videollamadaTexto}>Unirse</Text>
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    void abrirReprogramar(turno);
+                  }}
+                  style={styles.reprogramar}
+                >
+                  <Text style={styles.reprogramarTexto}>Reprogramar</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => pedirCancelacion(turno)}
+                  style={styles.reprogramar}
+                >
+                  <Text style={styles.reprogramarTexto}>Cancelar</Text>
+                </Pressable>
+              </View>
             ) : null}
           </View>
         ))}
@@ -226,6 +314,70 @@ export default function TurnosScreen() {
           ))
         )}
       </ScrollView>
+
+      <Modal
+        visible={turnoAReprogramar != null}
+        transparent
+        animationType="slide"
+        onRequestClose={() => !reprogramando && setTurnoAReprogramar(null)}
+      >
+        <Pressable style={styles.fondo} onPress={() => !reprogramando && setTurnoAReprogramar(null)}>
+          <Pressable style={styles.dialogo} onPress={() => {}}>
+            <View style={styles.asa} />
+            <Text style={styles.dialogoTitulo}>Reprogramar turno</Text>
+            <Text style={styles.dialogoAyuda}>
+              {turnoAReprogramar?.profesional} · {turnoAReprogramar?.cuando}. El pago de este turno se mantiene.
+            </Text>
+            <ScrollView style={styles.huecos} contentContainerStyle={styles.huecosContenido}>
+              {cargandoHuecos ? (
+                <EmeraldSpinner />
+              ) : diasReprogramar.length === 0 && !errorReprogramar ? (
+                <Text style={styles.sinHorarios}>No hay horarios libres en los próximos 30 días.</Text>
+              ) : (
+                diasReprogramar.map((dia) => (
+                  <View key={dia.clave} style={styles.diaBloque}>
+                    <Text style={styles.dia}>{dia.etiqueta}</Text>
+                    <View style={styles.grilla}>
+                      {dia.horarios.map((horario) => {
+                        const elegido = horarioNuevo === horario.inicio;
+                        return (
+                          <Pressable
+                            key={horario.inicio}
+                            accessibilityRole="button"
+                            accessibilityState={{ selected: elegido }}
+                            disabled={reprogramando}
+                            onPress={() => setHorarioNuevo(horario.inicio)}
+                            style={[styles.hora, styles.horaLibre, elegido && styles.horaElegida]}
+                          >
+                            <Text style={[styles.horaTexto, styles.horaTextoLibre, elegido && styles.horaTextoElegida]}>
+                              {horario.hora}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+            {errorReprogramar ? (
+              <Text accessibilityRole="alert" style={styles.error}>
+                {errorReprogramar}
+              </Text>
+            ) : null}
+            <Pressable
+              accessibilityRole="button"
+              disabled={reprogramando || !horarioNuevo}
+              onPress={() => {
+                void guardarReprogramacion();
+              }}
+              style={[styles.pagar, (reprogramando || !horarioNuevo) && styles.deshabilitado]}
+            >
+              <Text style={styles.pagarTexto}>{reprogramando ? 'Guardando...' : 'Confirmar horario'}</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal visible={slot != null} transparent animationType="slide" onRequestClose={() => !pagando && setSlot(null)}>
         <Pressable style={styles.fondo} onPress={() => !pagando && setSlot(null)}>
@@ -317,8 +469,21 @@ const styles = StyleSheet.create({
   propioKicker: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase' },
   propioNombre: { marginTop: 8, color: '#ffffff', fontSize: 16, fontWeight: '600' },
   propioCuando: { marginTop: 4, color: 'rgba(255,255,255,0.85)', fontSize: 14 },
-  videollamada: { marginTop: 14, alignSelf: 'flex-start', backgroundColor: '#ffffff', borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10 },
+  acciones: { marginTop: 14, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  videollamada: { alignSelf: 'flex-start', backgroundColor: '#ffffff', borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10 },
   videollamadaTexto: { color: '#12382E', fontSize: 14, fontWeight: '700' },
+  reprogramar: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  reprogramarTexto: { color: '#ffffff', fontSize: 14, fontWeight: '700' },
+  huecos: { maxHeight: 280, marginTop: 16 },
+  huecosContenido: { paddingBottom: 8 },
   kicker: {
     marginTop: 8,
     marginBottom: 12,

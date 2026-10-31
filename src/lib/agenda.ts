@@ -132,7 +132,7 @@ export async function cargarMisTurnos(): Promise<TurnoPropio[] | { error: string
     .select('id, fecha_hora, estado, doctor_id')
     .eq('paciente_id', user.id)
     .eq('oculto_para_paciente', false)
-    .in('estado', ['CONFIRMADO', 'COMPLETADO'])
+    .in('estado', ['PENDIENTE', 'CONFIRMADO', 'COMPLETADO'])
     .gte('fecha_hora', new Date().toISOString())
     .order('fecha_hora', { ascending: true });
 
@@ -157,6 +157,94 @@ export async function cargarMisTurnos(): Promise<TurnoPropio[] | { error: string
     }),
     estado: String(turno.estado),
   }));
+}
+
+export type DiaReprogramar = {
+  clave: string;
+  etiqueta: string;
+  horarios: { hora: string; inicio: string }[];
+};
+
+async function tokenDeSesion(): Promise<{ error: string } | { base: string; token: string }> {
+  const base = process.env.EXPO_PUBLIC_AURA_WEB_URL?.replace(/\/+$/, '');
+  if (!base) return { error: 'Falta EXPO_PUBLIC_AURA_WEB_URL.' };
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) return { error: 'No autorizado' };
+  return { base, token };
+}
+
+export async function pedirHuecosParaReprogramar(turnoId: string): Promise<{ dias: DiaReprogramar[] } | { error: string }> {
+  const sesion = await tokenDeSesion();
+  if ('error' in sesion) return { error: sesion.error };
+
+  let respuesta: Response;
+  try {
+    respuesta = await fetch(
+      `${sesion.base}/api/turnos/mobile/reprogramar?turnoId=${encodeURIComponent(turnoId)}`,
+      { headers: { Authorization: `Bearer ${sesion.token}` } },
+    );
+  } catch {
+    return { error: 'No pudimos consultar los horarios.' };
+  }
+
+  const cuerpo = (await respuesta.json().catch(() => null)) as { dias?: DiaReprogramar[]; error?: string } | null;
+  if (!respuesta.ok || !cuerpo?.dias) {
+    return { error: cuerpo?.error || 'No pudimos consultar los horarios.' };
+  }
+  return { dias: cuerpo.dias.flatMap(diaDisponible) };
+}
+
+export async function cancelarTurnoPropio(turnoId: string) {
+  const sesion = await tokenDeSesion();
+  if ('error' in sesion) return { error: sesion.error };
+
+  let respuesta: Response;
+  try {
+    respuesta = await fetch(`${sesion.base}/api/turnos/mobile/cancelar`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${sesion.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ turnoId }),
+    });
+  } catch {
+    return { error: 'No pudimos cancelar el turno.' };
+  }
+
+  const cuerpo = (await respuesta.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+  if (!respuesta.ok || !cuerpo?.success) {
+    return { error: cuerpo?.error || 'No pudimos cancelar el turno.' };
+  }
+  return { success: true as const };
+}
+
+export async function confirmarReprogramacion(turnoId: string, inicio: string) {
+  const sesion = await tokenDeSesion();
+  if ('error' in sesion) return { error: sesion.error };
+
+  let respuesta: Response;
+  try {
+    respuesta = await fetch(`${sesion.base}/api/turnos/mobile/reprogramar`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${sesion.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ turnoId, inicio }),
+    });
+  } catch {
+    return { error: 'No pudimos reprogramar el turno.' };
+  }
+
+  const cuerpo = (await respuesta.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+  if (!respuesta.ok || !cuerpo?.success) {
+    return { error: cuerpo?.error || 'No pudimos reprogramar el turno.' };
+  }
+  return { success: true as const };
 }
 
 export async function pedirSala(turnoId: string) {
