@@ -180,9 +180,10 @@ export default function TurnosScreen() {
     }, []),
   );
 
-  const puntosUsados = usarPuntos ? puntos : 0;
+  const puntosDisponibles = Number.isInteger(puntos) && puntos > 0 ? puntos : 0;
+  const puntosUsados = usarPuntos && puntosDisponibles > 0 ? puntosDisponibles : 0;
   const descuento = descuentoAplicadoTurno(puntosUsados);
-  const total = usarPuntos ? totalConPuntos(puntos) : totalSinPuntos();
+  const total = puntosUsados > 0 ? totalConPuntos(puntosUsados) : totalSinPuntos();
 
   function pedirCancelacion(turnoId: string) {
     const id = turnoId.trim();
@@ -443,14 +444,14 @@ export default function TurnosScreen() {
 
             <Pressable
               accessibilityRole="switch"
-              accessibilityState={{ checked: usarPuntos, disabled: puntos === 0 || pagando }}
-              disabled={puntos === 0 || pagando}
+              accessibilityState={{ checked: usarPuntos, disabled: puntosDisponibles === 0 || pagando }}
+              disabled={puntosDisponibles === 0 || pagando}
               onPress={() => setUsarPuntos((activo) => !activo)}
-              style={[styles.puntos, usarPuntos && styles.puntosActivo, (puntos === 0 || pagando) && styles.deshabilitado]}>
+              style={[styles.puntos, usarPuntos && styles.puntosActivo, (puntosDisponibles === 0 || pagando) && styles.deshabilitado]}>
               <View style={styles.puntosTexto}>
                 <Text style={styles.puntosTitulo}>Usar puntos (Máximo 50% de descuento)</Text>
                 <Text style={styles.puntosDetalle}>
-                  {puntos} pts = {pesos(descuentoAplicadoTurno(puntos))} de descuento
+                  {puntosDisponibles} pts = {pesos(descuentoAplicadoTurno(puntosDisponibles))} de descuento
                 </Text>
               </View>
               <View style={[styles.switch, usarPuntos && styles.switchActivo]}>
