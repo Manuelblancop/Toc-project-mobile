@@ -20,7 +20,6 @@ import { EmeraldSpinner } from '@/components/emerald-spinner';
 import {
   COMISION_POR_CONSULTA,
   TICKET_BASE,
-  archivarPacienteDeLista,
   cargarPanelDoctor,
   finalizarConsulta,
   guardarNotaClinica,
@@ -50,7 +49,6 @@ export default function DoctorHomeScreen() {
   const [verCanceladas, setVerCanceladas] = useState(false);
   const [ocultandoId, setOcultandoId] = useState<string | null>(null);
   const [finalizandoId, setFinalizandoId] = useState<string | null>(null);
-  const [archivandoId, setArchivandoId] = useState<string | null>(null);
 
   const cargar = useCallback(async () => {
     try {
@@ -79,22 +77,6 @@ export default function DoctorHomeScreen() {
   const pendientes = agenda.filter((turno) => turno.estado === 'PENDIENTE' || turno.estado === 'CONFIRMADO');
   const completadas = agenda.filter((turno) => turno.estado === 'COMPLETADO');
   const canceladas = agenda.filter((turno) => turno.estado === 'CANCELADO');
-
-  async function quitarPaciente(pacienteId: string) {
-    if (archivandoId) return;
-    setArchivandoId(pacienteId);
-    setError('');
-    const resultado = await archivarPacienteDeLista(pacienteId);
-    setArchivandoId(null);
-    if ('error' in resultado) {
-      setError(resultado.error ?? 'No pudimos quitar al paciente de la lista.');
-      return;
-    }
-    setPanel((actual) => {
-      if (!actual) return actual;
-      return { ...actual, pacientes: actual.pacientes.filter((paciente) => paciente.id !== pacienteId) };
-    });
-  }
 
   async function cerrarConsulta(turnoId: string) {
     if (finalizandoId) return;
@@ -272,26 +254,19 @@ export default function DoctorHomeScreen() {
             </View>
           ) : (
             panel.pacientes.map((paciente) => (
-              <View key={paciente.id} style={styles.card}>
-                <Pressable accessibilityRole="button" onPress={() => abrirFicha(paciente.id)}>
-                  <Text style={styles.nombre}>{paciente.nombre}</Text>
-                </Pressable>
+              <Pressable
+                key={paciente.id}
+                accessibilityRole="button"
+                onPress={() => abrirFicha(paciente.id)}
+                style={styles.card}
+              >
+                <Text style={styles.nombre}>{paciente.nombre}</Text>
                 {paciente.pausa ? (
                   <View style={styles.pausa}>
                     <AvisoPausaAura pausa={paciente.pausa} />
                   </View>
                 ) : null}
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={archivandoId === paciente.id}
-                  onPress={() => void quitarPaciente(paciente.id)}
-                  style={styles.quitar}
-                >
-                  <Text style={styles.quitarTexto}>
-                    {archivandoId === paciente.id ? 'Quitando...' : 'Finalizar tratamiento / Eliminar de lista'}
-                  </Text>
-                </Pressable>
-              </View>
+              </Pressable>
             ))
           )}
 
@@ -611,15 +586,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   finalizarTexto: { color: '#334155', fontSize: 13, fontWeight: '600' },
-  quitar: {
-    marginTop: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 8,
-    paddingVertical: 10,
-  },
-  quitarTexto: { color: '#b91c1c', fontSize: 13, fontWeight: '600', textAlign: 'center' },
   hora: { minWidth: 48, color: '#64748b', fontSize: 14, fontWeight: '600' },
   turnoTexto: { flex: 1 },
   nombre: { color: '#0f172a', fontSize: 15, fontWeight: '600' },
