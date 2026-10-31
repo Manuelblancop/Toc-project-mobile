@@ -66,7 +66,11 @@ export function Campana({
         onPress={() => setAbierta(true)}
         style={styles.boton}
       >
-        <Text style={styles.icono}>🔔</Text>
+        <View style={styles.icono} accessibilityElementsHidden>
+          <View style={styles.iconoCuerpo} />
+          <View style={styles.iconoBase} />
+          <View style={styles.iconoBadajo} />
+        </View>
         {cuenta > 0 ? (
           <View style={styles.badge}>
             <Text style={styles.badgeTexto}>{cuenta > 9 ? '9+' : String(cuenta)}</Text>
@@ -138,7 +142,33 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   icono: {
-    fontSize: 18,
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+  },
+  iconoCuerpo: {
+    width: 14,
+    height: 12,
+    marginTop: 1,
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
+    borderWidth: 1.8,
+    borderColor: '#064e3b',
+    backgroundColor: 'transparent',
+  },
+  iconoBase: {
+    width: 18,
+    height: 2,
+    marginTop: -1,
+    borderRadius: 1,
+    backgroundColor: '#064e3b',
+  },
+  iconoBadajo: {
+    width: 4,
+    height: 4,
+    marginTop: 1,
+    borderRadius: 2,
+    backgroundColor: '#064e3b',
   },
   badge: {
     position: 'absolute',

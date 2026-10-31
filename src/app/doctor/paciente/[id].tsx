@@ -166,15 +166,12 @@ export default function FichaPacienteScreen() {
       {ficha ? (
         <>
           <View style={styles.card}>
-            <Text style={styles.cardTitulo}>Contexto</Text>
-            <View style={styles.triage}>
-              <Text style={styles.triageTitulo}>Motivo de consulta / Triage</Text>
-              <Text style={styles.triageTexto}>
-                {ficha.triage?.trim() || 'El paciente todavía no escribió un motivo de consulta.'}
-              </Text>
-            </View>
-            <Text style={styles.subtitulo}>Evolución emocional</Text>
-            <GraficoEvolucion datos={ficha.puntos} />
+            <Text style={styles.gestion}>Gestión</Text>
+            <Text style={styles.cardTitulo}>Asignación de Ejercicios ERP</Text>
+            <Text style={styles.cuerpo}>
+              Panel para recetar y seguir ejercicios. No forma parte de la historia clínica.
+            </Text>
+            <SeccionErp ficha={ficha} pacienteId={pacienteId} onAsignado={cargar} onEliminado={quitarEjercicio} />
           </View>
 
           <View style={styles.card}>
@@ -257,12 +254,15 @@ export default function FichaPacienteScreen() {
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.gestion}>Gestión</Text>
-            <Text style={styles.cardTitulo}>Asignación de Ejercicios ERP</Text>
-            <Text style={styles.cuerpo}>
-              Panel para recetar y seguir ejercicios. No forma parte de la historia clínica.
-            </Text>
-            <SeccionErp ficha={ficha} pacienteId={pacienteId} onAsignado={cargar} onEliminado={quitarEjercicio} />
+            <Text style={styles.cardTitulo}>Contexto</Text>
+            <View style={styles.triage}>
+              <Text style={styles.triageTitulo}>Motivo de consulta / Triage</Text>
+              <Text style={styles.triageTexto}>
+                {ficha.triage?.trim() || 'El paciente todavía no escribió un motivo de consulta.'}
+              </Text>
+            </View>
+            <Text style={styles.subtitulo}>Evolución emocional</Text>
+            <GraficoEvolucion datos={ficha.puntos} />
           </View>
         </>
       ) : null}
