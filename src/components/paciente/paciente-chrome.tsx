@@ -65,7 +65,7 @@ export function PacienteChrome({
 
       const destino = await destinoTrasAuth(user);
       if (!activo) return;
-      if (destino === '/doctor' || destino === '/doctor/pendiente') {
+      if (destino === '/profesional' || destino === '/profesional/pendiente') {
         router.replace(destino);
         return;
       }

@@ -1,7 +1,7 @@
 import { EMOJIS_ANIMO, puntoDeCheckin, type PuntoEvolucionEmocional } from '@/lib/emociones';
 import { etiquetaDuracion } from '@/lib/erp';
 import { horaArgentina } from '@/lib/agenda';
-import { esperarSesionInicial } from '@/lib/sesion';
+import { sesionVigente } from '@/lib/sesion';
 import { supabase } from '@/lib/supabase';
 
 export const TICKET_BASE = 30000;
@@ -148,7 +148,7 @@ function idLocal() {
 }
 
 async function sesionDoctor() {
-  const sesion = await esperarSesionInicial();
+  const sesion = await sesionVigente();
   const user = sesion?.user;
   if (!user) return { destino: '/login' as const };
 
@@ -166,18 +166,18 @@ async function sesionDoctor() {
     | { rating: number; verificado: boolean; validado_sisa: boolean }[]
     | null;
   const perfil = Array.isArray(perfilRaw) ? (perfilRaw[0] ?? null) : perfilRaw;
-  if (!perfil?.verificado || !perfil.validado_sisa) return { destino: '/doctor/pendiente' as const };
+  if (!perfil?.verificado || !perfil.validado_sisa) return { destino: '/profesional/pendiente' as const };
 
   return {
     destino: null,
     userId: user.id,
-    nombre: typeof data.nombre === 'string' ? data.nombre : 'Doctor',
+    nombre: typeof data.nombre === 'string' ? data.nombre : 'Profesional',
     rating: typeof perfil.rating === 'number' ? perfil.rating : null,
   };
 }
 
 export async function cargarPanelDoctor(): Promise<
-  { destino: '/login' | '/home' | '/doctor/pendiente' } | { destino: null; panel: PanelDoctor }
+  { destino: '/login' | '/home' | '/profesional/pendiente' } | { destino: null; panel: PanelDoctor }
 > {
   const sesion = await sesionDoctor();
   if (sesion.destino) return { destino: sesion.destino };
@@ -402,7 +402,7 @@ async function metricasDelPanel(doctorId: string) {
 }
 
 export async function cargarFichaPaciente(pacienteId: string): Promise<
-  { destino: '/login' | '/home' | '/doctor/pendiente' } | { destino: null; ficha: FichaPaciente | null }
+  { destino: '/login' | '/home' | '/profesional/pendiente' } | { destino: null; ficha: FichaPaciente | null }
 > {
   const sesion = await sesionDoctor();
   if (sesion.destino) return { destino: sesion.destino };
@@ -694,7 +694,7 @@ export async function registrarPresencia() {
   const base = process.env.EXPO_PUBLIC_AURA_WEB_URL?.replace(/\/+$/, '');
   if (!base) return;
 
-  const sesion = await esperarSesionInicial();
+  const sesion = await sesionVigente();
   const token = sesion?.access_token;
   if (!token) return;
 
@@ -781,7 +781,7 @@ export async function eliminarEjercicioAsignado(ejercicioId: string) {
 export function csvDeHistorial(filas: FilaCsv[]) {
   const escapar = (valor: string) => `"${valor.replaceAll('"', '""')}"`;
   return [
-    ['Fecha', 'Estado', 'Notas del Doctor'].map(escapar).join(','),
+    ['Fecha', 'Estado', 'Notas del Profesional'].map(escapar).join(','),
     ...filas.map((fila) => [fila.fecha, fila.estado, fila.notas].map(escapar).join(',')),
   ].join('\n');
 }
@@ -795,7 +795,7 @@ export type PerfilMedico = {
 };
 
 export async function cargarPerfilMedico(): Promise<
-  { destino: '/login' | '/home' | '/doctor/pendiente' } | { destino: null; perfil: PerfilMedico }
+  { destino: '/login' | '/home' | '/profesional/pendiente' } | { destino: null; perfil: PerfilMedico }
 > {
   const sesion = await sesionDoctor();
   if (sesion.destino) return { destino: sesion.destino };

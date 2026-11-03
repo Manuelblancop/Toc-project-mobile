@@ -92,7 +92,7 @@ export async function cargarAgenda(): Promise<{ doctores: DoctorAgenda[]; puntos
           especialidad:
             typeof doctor.especialidad === 'string' && doctor.especialidad.trim()
               ? doctor.especialidad
-              : 'Psicólogo/a clínico/a',
+              : 'Profesional clínico/a',
           enLinea: doctor.enLinea === true,
           dias,
         },

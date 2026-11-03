@@ -6,7 +6,7 @@ import { StyleSheet, View } from 'react-native';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { EmeraldSpinner } from '@/components/emerald-spinner';
 import { PacienteChrome } from '@/components/paciente/paciente-chrome';
-import { destinoTrasAuth, esRutaPublica, esperarSesionInicial } from '@/lib/sesion';
+import { destinoTrasAuth, esRutaPublica, sesionVigente } from '@/lib/sesion';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -22,7 +22,7 @@ export default function RootLayout() {
 
     let activo = true;
     void (async () => {
-      const sesion = await esperarSesionInicial();
+      const sesion = await sesionVigente();
       if (!activo) return;
 
       const ruta = pathnameRef.current || '/';
@@ -30,7 +30,7 @@ export default function RootLayout() {
       if (user) {
         const destino = await destinoTrasAuth(user);
         if (!activo) return;
-        if (destino === '/home' || destino === '/doctor' || destino === '/doctor/pendiente') {
+        if (destino === '/home' || destino === '/profesional' || destino === '/profesional/pendiente') {
           if (esRutaPublica(ruta)) router.replace(destino);
         } else if (!esRutaPublica(ruta)) {
           router.replace('/login');

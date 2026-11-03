@@ -25,7 +25,7 @@ const caracteristicas = [
       'Aura te indica cómo reservar un turno y encontrar cada sección. Si detecta una crisis, muestra la línea 135.',
   },
   {
-    titulo: 'Historial médico',
+    titulo: 'Historial',
     texto: 'Consultá tus turnos, sesiones y notas en un solo lugar.',
   },
 ];

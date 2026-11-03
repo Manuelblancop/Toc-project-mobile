@@ -19,7 +19,7 @@ function urlDelChat() {
   const base = process.env.EXPO_PUBLIC_AURA_WEB_URL?.replace(/\/+$/, '');
   return base ? `${base}/api/chat/mobile` : '';
 }
-const OFERTA_TURNO = '¿querés ver si tu psicólogo/a tiene un turno disponible?';
+const OFERTA_TURNO = '¿querés ver si tu profesional tiene un turno disponible?';
 const AVISO_IA = 'Aura es una IA y puede cometer errores.';
 const SATURADO =
   'Disculpá, en este momento mis servidores están un poco saturados. ¿Podemos intentar de nuevo en unos minutitos?';
@@ -163,7 +163,7 @@ export default function AuraScreen() {
         <View style={styles.banner}>
           <Text style={styles.bannerTexto}>
             Por tu seguridad y normativas de salud, este chat se ha pausado temporalmente. Recordá que
-            Aura es un asistente virtual y no un profesional médico. Si necesitás hablar con alguien o
+            Aura es un asistente virtual y no un profesional. Si necesitás hablar con alguien o
             sentís angustia, la Línea 135 está disponible para escucharte en todo momento.
           </Text>
           <Pressable
@@ -215,7 +215,7 @@ export default function AuraScreen() {
                   style={styles.turno}
                 >
                   <Text style={styles.turnoTexto}>
-                    «¿querés ver si tu psicólogo/a tiene un turno disponible?»
+                    «¿querés ver si tu profesional tiene un turno disponible?»
                   </Text>
                 </Pressable>
               ) : null}

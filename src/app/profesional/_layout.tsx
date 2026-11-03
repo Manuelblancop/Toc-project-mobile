@@ -1,16 +1,16 @@
 import { Stack } from 'expo-router';
 
-import { DoctorChrome } from '@/components/doctor/doctor-chrome';
+import { ProfesionalChrome } from '@/components/doctor/profesional-chrome';
 
 export default function DoctorLayout() {
   return (
-    <DoctorChrome>
+    <ProfesionalChrome>
       <Stack
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: '#f8fafc' },
         }}
       />
-    </DoctorChrome>
+    </ProfesionalChrome>
   );
 }

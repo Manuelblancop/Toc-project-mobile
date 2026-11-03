@@ -35,7 +35,7 @@ function etiquetaTurnos(cantidad: number) {
 }
 
 function abrirFicha(pacienteId: string) {
-  router.push({ pathname: '/doctor/paciente/[id]', params: { id: pacienteId } });
+  router.push({ pathname: '/profesional/paciente/[id]', params: { id: pacienteId } });
 }
 
 export default function DoctorHomeScreen() {
@@ -157,7 +157,7 @@ export default function DoctorHomeScreen() {
       <View style={styles.encabezado}>
         <View style={styles.encabezadoTexto}>
           <Text style={styles.kicker}>Panel clínico</Text>
-          <Text style={styles.titulo}>Psicólogo/a {panel?.nombre ?? '…'}</Text>
+          <Text style={styles.titulo}>Profesional {panel?.nombre ?? '…'}</Text>
         </View>
       </View>
 

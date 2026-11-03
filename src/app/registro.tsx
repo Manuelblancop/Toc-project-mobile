@@ -120,7 +120,7 @@ export default function RegistroScreen() {
               onPress={() => setRol('DOCTOR')}
               style={[styles.role, rol === 'DOCTOR' ? styles.roleSelected : styles.roleIdle]}>
               <Text style={[styles.roleText, rol === 'DOCTOR' && styles.roleTextSelected]}>
-                Doctor
+                Profesional
               </Text>
             </TouchableOpacity>
           </View>

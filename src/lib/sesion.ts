@@ -14,13 +14,24 @@ export function esperarSesionInicial() {
   return sesionInicial;
 }
 
+export async function sesionVigente() {
+  const { data } = await supabase.auth.getSession();
+  const session = data.session ?? null;
+  sesionInicial = Promise.resolve(session);
+  return session;
+}
+
+supabase.auth.onAuthStateChange((_evento, session) => {
+  sesionInicial = Promise.resolve(session);
+});
+
 export function esRutaPublica(pathname: string) {
   return RUTAS_PUBLICAS.some(
     (ruta) => pathname === ruta || (ruta !== '/' && pathname.startsWith(`${ruta}/`)),
   );
 }
 
-export type DestinoAuth = '/home' | '/doctor' | '/doctor/pendiente';
+export type DestinoAuth = '/home' | '/profesional' | '/profesional/pendiente';
 
 type PerfilDoctor = {
   verificado: boolean;
@@ -42,7 +53,7 @@ function doctorHabilitado(perfil: PerfilDoctor | null) {
 
 export function rutaPostLogin(rol: string, perfil: PerfilDoctor | null): DestinoAuth | null {
   if (rol === 'DOCTOR') {
-    return doctorHabilitado(perfil) ? '/doctor' : '/doctor/pendiente';
+    return doctorHabilitado(perfil) ? '/profesional' : '/profesional/pendiente';
   }
   if (rol === 'PACIENTE') return '/home';
   return null;
@@ -50,7 +61,7 @@ export function rutaPostLogin(rol: string, perfil: PerfilDoctor | null): Destino
 
 function destinoPorMetadata(user: User): DestinoAuth | 'sin-rol' {
   const rol = rolDe(user.user_metadata?.rol);
-  if (rol === 'DOCTOR') return '/doctor/pendiente';
+  if (rol === 'DOCTOR') return '/profesional/pendiente';
   if (rol === 'PACIENTE') return '/home';
   return 'sin-rol';
 }

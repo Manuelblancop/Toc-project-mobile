@@ -7,11 +7,11 @@ import { Campana, useBandeja } from '@/components/notificaciones/campana';
 import { registrarPresencia } from '@/lib/doctor';
 import { cerrarSesion } from '@/lib/sesion';
 
-export function DoctorChrome({ children }: { children: ReactNode }) {
+export function ProfesionalChrome({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const [menuAbierto, setMenuAbierto] = useState(false);
-  const esPendiente = pathname === '/doctor/pendiente';
+  const esPendiente = pathname === '/profesional/pendiente';
   const { bandeja, leerTodas, eliminar } = useBandeja(!esPendiente);
 
   useEffect(() => {
@@ -29,7 +29,7 @@ export function DoctorChrome({ children }: { children: ReactNode }) {
 
   function irAlPerfil() {
     setMenuAbierto(false);
-    router.push('/doctor/perfil');
+    router.push('/profesional/perfil');
   }
 
   function salir() {

@@ -146,7 +146,7 @@ export default function PerfilMedicoScreen() {
       }}
       keyboardShouldPersistTaps="handled"
     >
-      <Pressable accessibilityRole="button" onPress={() => router.push('/doctor')} style={styles.volver}>
+      <Pressable accessibilityRole="button" onPress={() => router.push('/profesional')} style={styles.volver}>
         <Text style={styles.volverTexto}>← Panel</Text>
       </Pressable>
 
@@ -165,7 +165,7 @@ export default function PerfilMedicoScreen() {
                 <Text style={styles.avatarTexto}>{inicial}</Text>
               </View>
               <View style={styles.identidadTexto}>
-                <Text style={styles.nombre}>Psicólogo/a {perfil.nombre}</Text>
+                <Text style={styles.nombre}>Profesional {perfil.nombre}</Text>
                 <Text style={styles.email}>{perfil.email}</Text>
                 {perfil.verificado ? (
                   <View style={styles.chip}>
@@ -178,11 +178,11 @@ export default function PerfilMedicoScreen() {
 
           <View style={styles.card}>
             <Text style={styles.seccion}>Datos profesionales</Text>
-            <Dato etiqueta="Nombre completo" valor={`Psicólogo/a ${perfil.nombre}`} />
+            <Dato etiqueta="Nombre completo" valor={`Profesional ${perfil.nombre}`} />
             <Dato etiqueta="Correo" valor={perfil.email} />
             <View style={styles.campo}>
               <Text style={styles.etiqueta}>Especialidad</Text>
-              <Text style={styles.ayuda}>Si lo dejás vacío, el paciente ve «Psicólogo/a clínico/a».</Text>
+              <Text style={styles.ayuda}>Si lo dejás vacío, el paciente ve «Profesional clínico/a».</Text>
               <TextInput
                 value={especialidad}
                 onChangeText={setEspecialidad}

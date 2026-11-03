@@ -78,7 +78,7 @@ export default function FichaPacienteScreen() {
       setAviso(resultado.error ?? 'No pudimos quitar al paciente de la lista.');
       return;
     }
-    router.push('/doctor');
+    router.push('/profesional');
   }
 
   function quitarEjercicio(ejercicioId: string) {
@@ -138,7 +138,7 @@ export default function FichaPacienteScreen() {
       }}
       keyboardShouldPersistTaps="handled"
     >
-      <Pressable accessibilityRole="button" onPress={() => router.push('/doctor')} style={styles.volver}>
+      <Pressable accessibilityRole="button" onPress={() => router.push('/profesional')} style={styles.volver}>
         <Text style={styles.volverTexto}>← Panel</Text>
       </Pressable>
       <View style={styles.header}>
