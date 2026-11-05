@@ -4,7 +4,7 @@ export type NotificacionVista = {
   id: string;
   titulo: string;
   mensaje: string;
-  tipo: 'RESERVA' | 'REPROGRAMACION' | 'EJERCICIO_ERP';
+  tipo: 'RESERVA' | 'REPROGRAMACION' | 'EJERCICIO_ERP' | 'CANCELACION';
   createdAt: string;
 };
 
@@ -23,7 +23,10 @@ function esVista(valor: unknown): valor is NotificacionVista {
     typeof fila.id === 'string' &&
     typeof fila.titulo === 'string' &&
     typeof fila.mensaje === 'string' &&
-    (fila.tipo === 'RESERVA' || fila.tipo === 'REPROGRAMACION' || fila.tipo === 'EJERCICIO_ERP') &&
+    (fila.tipo === 'RESERVA' ||
+      fila.tipo === 'REPROGRAMACION' ||
+      fila.tipo === 'EJERCICIO_ERP' ||
+      fila.tipo === 'CANCELACION') &&
     typeof fila.createdAt === 'string'
   );
 }
